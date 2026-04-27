@@ -14,15 +14,20 @@ export async function GET(
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      let unsub: (() => void) | undefined;
+      let isClosed = false;
       const send = (event: BatchEvent): void => {
+        if (isClosed) return;
         const payload = `data: ${JSON.stringify(event)}\n\n`;
         controller.enqueue(encoder.encode(payload));
         if (event.type === "complete") {
-          unsub();
+          isClosed = true;
           controller.close();
+          unsub?.();
         }
       };
-      const unsub = bus.subscribe(batchId, send);
+      unsub = bus.subscribe(batchId, send);
+      if (isClosed) unsub();
     },
   });
 
