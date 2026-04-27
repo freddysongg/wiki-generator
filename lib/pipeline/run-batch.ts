@@ -82,8 +82,16 @@ async function processPdf(
     if (imagePages.length > 0) {
       emitStatus(bus, batchId, pdf.pdfId, "ocr", 0);
       for (const page of imagePages) {
-        const png = await hooks.renderPdfPageToPng(pdf.bytes, page.pageNumber);
-        page.text = await hooks.ocrPageImage(png);
+        try {
+          const png = await hooks.renderPdfPageToPng(pdf.bytes, page.pageNumber);
+          page.text = await hooks.ocrPageImage(png);
+        } catch (err) {
+          console.warn(
+            `[run-batch] ocr failed for ${pdf.filename} page ${page.pageNumber}:`,
+            err,
+          );
+          page.text = "";
+        }
       }
     }
 

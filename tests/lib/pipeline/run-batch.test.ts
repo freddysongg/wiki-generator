@@ -8,14 +8,17 @@ import type { BatchEvent } from "@/lib/types";
 
 let staging: string;
 let vault: string;
+let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(async () => {
   staging = await mkdtemp(path.join(tmpdir(), "stg-"));
   vault = await mkdtemp(path.join(tmpdir(), "vlt-"));
+  consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 afterEach(async () => {
   await rm(staging, { recursive: true, force: true });
   await rm(vault, { recursive: true, force: true });
+  consoleWarnSpy.mockRestore();
 });
 
 describe("runBatch", () => {
@@ -116,6 +119,38 @@ describe("runBatch", () => {
     const failed = events.find((e) => e.type === "status" && e.stage === "failed");
     const done = events.find((e) => e.type === "status" && e.stage === "done");
     expect(failed).toBeDefined();
+    expect(done).toBeDefined();
+  });
+
+  it("ocr failure on one page does not abort the pdf", async () => {
+    const bus = new EventBus();
+    const events: BatchEvent[] = [];
+    bus.subscribe("b4", (e) => events.push(e));
+    await runBatch({
+      bus,
+      batchId: "b4",
+      granularity: "medium",
+      stagingDir: staging,
+      vaultPath: vault,
+      maxConcurrent: 1,
+      pdfs: [{ pdfId: "p1", filename: "a.pdf", bytes: new Uint8Array([1]) }],
+      hooks: {
+        parsePdf: vi.fn().mockResolvedValue([
+          { pageNumber: 1, text: "", kind: "image" },
+          { pageNumber: 2, text: "", kind: "image" },
+        ]),
+        renderPdfPageToPng: vi.fn().mockResolvedValue(new Uint8Array([0x89])),
+        ocrPageImage: vi
+          .fn()
+          .mockRejectedValueOnce(new Error("vision down"))
+          .mockResolvedValueOnce("recovered"),
+        scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>()),
+        extractConcepts: vi.fn().mockResolvedValue({
+          pages: [{ title: "T", body: "B", sourcePages: "p.1-2", links: [] }],
+        }),
+      },
+    });
+    const done = events.find((e) => e.type === "status" && e.stage === "done");
     expect(done).toBeDefined();
   });
 });
