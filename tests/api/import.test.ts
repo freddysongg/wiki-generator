@@ -55,4 +55,11 @@ describe("POST /api/import/[batchId]", () => {
     const res = await POST(req, { params: Promise.resolve({ batchId: "missing" }) });
     expect(res.status).toBe(404);
   });
+
+  it("rejects path-traversal batchId with 400", async () => {
+    const { POST } = await import("@/app/api/import/[batchId]/route");
+    const req = new Request(`http://localhost/api/import/..%2Fetc`, { method: "POST" });
+    const res = await POST(req, { params: Promise.resolve({ batchId: "../etc" }) });
+    expect(res.status).toBe(400);
+  });
 });

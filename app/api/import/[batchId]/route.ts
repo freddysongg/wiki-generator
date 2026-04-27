@@ -3,6 +3,7 @@ import path from "node:path";
 import { access } from "node:fs/promises";
 import { loadConfig } from "@/lib/config";
 import { importBatchToVault } from "@/lib/pipeline/import-to-vault";
+import { isValidBatchId } from "@/lib/batch-id";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,9 @@ export async function POST(
   ctx: { params: Promise<{ batchId: string }> },
 ): Promise<Response> {
   const { batchId } = await ctx.params;
+  if (!isValidBatchId(batchId)) {
+    return NextResponse.json({ error: "invalid batch id" }, { status: 400 });
+  }
   const cfg = loadConfig();
   const stagingDir = stagingRoot();
   const batchDir = path.join(stagingDir, batchId);

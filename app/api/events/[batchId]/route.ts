@@ -1,4 +1,5 @@
 import { getEventBus } from "@/lib/events/bus";
+import { isValidBatchId } from "@/lib/batch-id";
 import type { BatchEvent } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -9,6 +10,9 @@ export async function GET(
   ctx: { params: Promise<{ batchId: string }> },
 ): Promise<Response> {
   const { batchId } = await ctx.params;
+  if (!isValidBatchId(batchId)) {
+    return new Response("invalid batch id", { status: 400 });
+  }
   const bus = getEventBus();
   const encoder = new TextEncoder();
 
