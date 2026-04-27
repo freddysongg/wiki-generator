@@ -21,6 +21,7 @@ interface BatchTotals {
 
 interface ProcessResponse {
   batchId: string;
+  pdfs: Array<{ pdfId: string; filename: string }>;
 }
 
 interface ApiError {
@@ -43,11 +44,11 @@ export default function Page(): JSX.Element {
     if (event.type === "status") {
       setStatuses((prev) => {
         const existing = prev[event.pdfId];
+        if (!existing) return prev;
         return {
           ...prev,
           [event.pdfId]: {
-            pdfId: event.pdfId,
-            filename: existing?.filename ?? event.pdfId,
+            ...existing,
             stage: event.stage,
             pagesGenerated: event.pagesGenerated,
             error: event.error,
@@ -58,7 +59,6 @@ export default function Page(): JSX.Element {
     }
     if (event.type === "complete") {
       setTotals(event.totals);
-      return;
     }
   }, []);
 
@@ -77,17 +77,6 @@ export default function Page(): JSX.Element {
       toast.error("Add at least one PDF.");
       return;
     }
-    const initial: Record<string, PdfStatus> = {};
-    for (const file of files) {
-      const id = `pending:${file.name}:${file.size}`;
-      initial[id] = {
-        pdfId: id,
-        filename: file.name,
-        stage: "queued",
-        pagesGenerated: 0,
-      };
-    }
-    setStatuses(initial);
     setTotals(null);
     setImportResult(null);
 
@@ -102,11 +91,22 @@ export default function Page(): JSX.Element {
     if (!response.ok) {
       const errorBody = (await response.json().catch(() => ({}))) as ApiError;
       toast.error(`Process failed: ${errorBody.error ?? response.status}`);
+      setStatuses({});
       return;
     }
     const body = (await response.json()) as ProcessResponse;
+
+    const seeded: Record<string, PdfStatus> = {};
+    for (const pdf of body.pdfs) {
+      seeded[pdf.pdfId] = {
+        pdfId: pdf.pdfId,
+        filename: pdf.filename,
+        stage: "queued",
+        pagesGenerated: 0,
+      };
+    }
+    setStatuses(seeded);
     setBatchId(body.batchId);
-    setStatuses({});
   }, [files, granularity]);
 
   const importToVault = useCallback(async (): Promise<void> => {

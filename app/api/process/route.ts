@@ -71,5 +71,8 @@ export async function POST(req: Request): Promise<Response> {
     },
   });
 
-  return NextResponse.json({ batchId });
+  return NextResponse.json({
+    batchId,
+    pdfs: pdfs.map((p) => ({ pdfId: p.pdfId, filename: p.filename })),
+  });
 }

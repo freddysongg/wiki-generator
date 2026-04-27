@@ -20,7 +20,7 @@ beforeEach(() => {
 });
 
 describe("POST /api/process", () => {
-  it("returns batchId and triggers runBatch", async () => {
+  it("returns batchId and pdf metadata", async () => {
     const { POST } = await import("@/app/api/process/route");
     const formData = new FormData();
     formData.append("granularity", "medium");
@@ -34,6 +34,10 @@ describe("POST /api/process", () => {
     const json = await res.json();
     expect(typeof json.batchId).toBe("string");
     expect(json.batchId.length).toBeGreaterThan(0);
+    expect(Array.isArray(json.pdfs)).toBe(true);
+    expect(json.pdfs).toHaveLength(1);
+    expect(json.pdfs[0].filename).toBe("x.pdf");
+    expect(typeof json.pdfs[0].pdfId).toBe("string");
   });
 
   it("rejects when no files supplied", async () => {
