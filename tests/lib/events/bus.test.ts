@@ -1,8 +1,18 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventBus } from "@/lib/events/bus";
 import type { BatchEvent } from "@/lib/types";
 
 describe("EventBus", () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
   it("delivers events to subscribers of the matching batch", async () => {
     const bus = new EventBus();
     const received: BatchEvent[] = [];
@@ -30,5 +40,29 @@ describe("EventBus", () => {
     unsub();
     bus.publish({ type: "status", batchId: "b1", pdfId: "p", stage: "queued", pagesGenerated: 0 });
     expect(received).toHaveLength(0);
+  });
+
+  it("isolates a throwing listener from siblings", () => {
+    const bus = new EventBus();
+    const received: number[] = [];
+    bus.subscribe("b1", () => {
+      throw new Error("bad listener");
+    });
+    bus.subscribe("b1", () => {
+      received.push(1);
+    });
+    bus.subscribe("b1", () => {
+      received.push(2);
+    });
+    expect(() =>
+      bus.publish({
+        type: "status",
+        batchId: "b1",
+        pdfId: "p",
+        stage: "queued",
+        pagesGenerated: 0,
+      }),
+    ).not.toThrow();
+    expect(received).toEqual([1, 2]);
   });
 });

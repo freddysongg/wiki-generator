@@ -9,7 +9,13 @@ export class EventBus {
   publish(event: BatchEvent): void {
     const listeners = this.listeners.get(event.batchId);
     if (listeners && listeners.size > 0) {
-      for (const l of listeners) l(event);
+      for (const l of listeners) {
+        try {
+          l(event);
+        } catch (err) {
+          console.error("[event-bus] listener threw:", err);
+        }
+      }
       return;
     }
     const buf = this.buffers.get(event.batchId) ?? [];

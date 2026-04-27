@@ -12,14 +12,22 @@ export async function GET(
   const bus = getEventBus();
   const encoder = new TextEncoder();
 
+  let isClosed = false;
+  let cleanup: (() => void) | undefined;
+
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       let unsub: (() => void) | undefined;
-      let isClosed = false;
       const send = (event: BatchEvent): void => {
         if (isClosed) return;
-        const payload = `data: ${JSON.stringify(event)}\n\n`;
-        controller.enqueue(encoder.encode(payload));
+        try {
+          const payload = `data: ${JSON.stringify(event)}\n\n`;
+          controller.enqueue(encoder.encode(payload));
+        } catch {
+          isClosed = true;
+          unsub?.();
+          return;
+        }
         if (event.type === "complete") {
           isClosed = true;
           controller.close();
@@ -28,6 +36,13 @@ export async function GET(
       };
       unsub = bus.subscribe(batchId, send);
       if (isClosed) unsub();
+      cleanup = (): void => {
+        isClosed = true;
+        unsub?.();
+      };
+    },
+    cancel() {
+      cleanup?.();
     },
   });
 
@@ -36,6 +51,7 @@ export async function GET(
       "content-type": "text/event-stream",
       "cache-control": "no-cache, no-transform",
       connection: "keep-alive",
+      "x-accel-buffering": "no",
     },
   });
 }
