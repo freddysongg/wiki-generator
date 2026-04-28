@@ -4,7 +4,7 @@ Local-only Next.js tool that turns PDFs into a cross-referenced Markdown wiki fo
 
 ## Setup
 
-1. `cp .env.example .env.local` and fill in `ANTHROPIC_API_KEY` and `OBSIDIAN_VAULT_PATH`.
+1. `cp .env.example .env.local` and fill in `OBSIDIAN_VAULT_PATH` plus the API key for your chosen provider (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`).
 2. `npm install`
 3. `npm run dev`
 4. Open `http://localhost:3000`.
@@ -21,12 +21,20 @@ Local-only Next.js tool that turns PDFs into a cross-referenced Markdown wiki fo
 - `npm test` — full vitest run.
 - `npm run typecheck` — TypeScript only.
 
-## Models used
+## LLM provider
 
-- `claude-sonnet-4-6` for concept extraction.
-- `claude-haiku-4-5-20251001` for OCR fallback (image PDFs).
+Set `LLM_PROVIDER` to `anthropic` (default) or `openai`. Each provider requires its own API key.
 
-Both default values; override via `EXTRACTION_MODEL` / `OCR_MODEL` in `.env.local`.
+### Anthropic (default)
+- `ANTHROPIC_API_KEY` required
+- Defaults: `claude-sonnet-4-6` for extraction, `claude-haiku-4-5-20251001` for OCR, `claude-haiku-4-5-20251001` for the auto-granularity classifier
+
+### OpenAI
+- `OPENAI_API_KEY` required, `LLM_PROVIDER=openai`
+- Defaults: `gpt-4o` for extraction, `gpt-4o-mini` for OCR, `gpt-4o-mini` for the auto-granularity classifier
+- Both models must support vision and function-calling
+
+Override any default with `EXTRACTION_MODEL` / `OCR_MODEL` / `GRANULARITY_PICKER_MODEL` in `.env.local`.
 
 ## Folder layout
 
