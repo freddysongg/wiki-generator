@@ -1,9 +1,9 @@
-import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { ExtractionResult, Granularity } from "@/lib/types";
+import type { LlmClient } from "@/lib/llm";
 
 export interface ExtractDeps {
-  client: Pick<Anthropic, "messages">;
+  client: LlmClient;
   model: string;
   pdfText: string;
   vaultTitles: string[];
@@ -44,29 +44,28 @@ const ResultSchema = z.object({
   ),
 });
 
-const TOOL_SCHEMA = {
-  name: "submit_pages",
-  description: "Return the set of wiki pages extracted from the PDF.",
-  input_schema: {
-    type: "object",
-    properties: {
-      pages: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            title: { type: "string" },
-            body: { type: "string" },
-            sourcePages: { type: "string" },
-            links: { type: "array", items: { type: "string" } },
-          },
-          required: ["title", "body", "sourcePages", "links"],
+const TOOL_NAME = "submit_pages";
+const TOOL_DESCRIPTION =
+  "Return the set of wiki pages extracted from the PDF.";
+const TOOL_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    pages: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          body: { type: "string" },
+          sourcePages: { type: "string" },
+          links: { type: "array", items: { type: "string" } },
         },
+        required: ["title", "body", "sourcePages", "links"],
       },
     },
-    required: ["pages"],
   },
-} as const;
+  required: ["pages"],
+};
 
 const MAX_TOKENS = 16000;
 const MAX_ATTEMPTS = 2;
@@ -74,45 +73,32 @@ const MAX_ATTEMPTS = 2;
 export async function extractConcepts(
   deps: ExtractDeps,
 ): Promise<ExtractionResult> {
-  const userBlocks = [
-    {
-      type: "text" as const,
-      text: `Vault titles already present (use these for cross-references when they match):\n${deps.vaultTitles.join("\n")}`,
-      cache_control: { type: "ephemeral" as const },
-    },
-    {
-      type: "text" as const,
-      text: `Granularity: ${deps.granularity}\n\nPDF text:\n${deps.pdfText}`,
-    },
-  ];
+  const cacheableContext = `Vault titles already present (use these for cross-references when they match):\n${deps.vaultTitles.join("\n")}`;
+  /* auto granularity defaults to medium until backend support lands; spec 2026-04-28 */
+  const promptGranularity =
+    deps.granularity === "auto" ? "medium" : deps.granularity;
+  const body = `Granularity: ${promptGranularity}\n\nPDF text:\n${deps.pdfText}`;
 
   let lastError: string | undefined;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const response = await deps.client.messages.create({
+    const systemPrompt = lastError
+      ? `${SYSTEM_PROMPT}\n\nPrevious attempt failed validation: ${lastError}. Fix and retry.`
+      : SYSTEM_PROMPT;
+
+    const raw = await deps.client.callTool({
       model: deps.model,
-      max_tokens: MAX_TOKENS,
-      system: [
-        {
-          type: "text",
-          text:
-            SYSTEM_PROMPT +
-            (lastError
-              ? `\n\nPrevious attempt failed validation: ${lastError}. Fix and retry.`
-              : ""),
-          cache_control: { type: "ephemeral" },
-        },
-      ],
-      tools: [TOOL_SCHEMA as unknown as Anthropic.Messages.Tool],
-      tool_choice: { type: "tool", name: "submit_pages" },
-      messages: [{ role: "user", content: userBlocks }],
+      maxTokens: MAX_TOKENS,
+      systemPrompt,
+      cacheableContext,
+      body,
+      tool: {
+        name: TOOL_NAME,
+        description: TOOL_DESCRIPTION,
+        schema: TOOL_SCHEMA,
+      },
     });
 
-    const toolBlock = response.content.find((b) => b.type === "tool_use");
-    if (!toolBlock || toolBlock.type !== "tool_use") {
-      lastError = "model did not return tool_use block";
-      continue;
-    }
-    const parsed = ResultSchema.safeParse(toolBlock.input);
+    const parsed = ResultSchema.safeParse(raw);
     if (parsed.success) return parsed.data;
     lastError = parsed.error.message;
   }
