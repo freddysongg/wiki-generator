@@ -8,7 +8,9 @@ describe("UploadZone", () => {
     const onFiles = vi.fn();
     render(<UploadZone onFiles={onFiles} disabled={false} />);
     const file = new File(["x"], "doc.pdf", { type: "application/pdf" });
-    const input = screen.getByLabelText(/drop pdfs here/i) as HTMLInputElement;
+    const input = screen.getByLabelText(
+      /drop or select pdf/i,
+    ) as HTMLInputElement;
     fireEvent.change(input, { target: { files: [file] } });
     expect(onFiles).toHaveBeenCalledTimes(1);
     expect(onFiles.mock.calls[0][0]).toHaveLength(1);
@@ -18,7 +20,9 @@ describe("UploadZone", () => {
     const onFiles = vi.fn();
     render(<UploadZone onFiles={onFiles} disabled={false} />);
     const file = new File(["x"], "image.png", { type: "image/png" });
-    const input = screen.getByLabelText(/drop pdfs here/i) as HTMLInputElement;
+    const input = screen.getByLabelText(
+      /drop or select pdf/i,
+    ) as HTMLInputElement;
     fireEvent.change(input, { target: { files: [file] } });
     expect(onFiles).toHaveBeenCalledWith([]);
   });
