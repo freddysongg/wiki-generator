@@ -5,7 +5,9 @@ vi.mock("@/lib/pipeline/run-batch", () => ({
 }));
 vi.mock("@/lib/config", () => ({
   loadConfig: () => ({
+    llmProvider: "anthropic",
     anthropicApiKey: "k",
+    openaiApiKey: undefined,
     vaultPath: "/tmp/v",
     wikiSubfolder: "wiki",
     extractionModel: "claude-sonnet-4-6",
@@ -26,9 +28,14 @@ describe("POST /api/process", () => {
     formData.append("granularity", "medium");
     formData.append(
       "files",
-      new File([new Uint8Array([1, 2, 3])], "x.pdf", { type: "application/pdf" }),
+      new File([new Uint8Array([1, 2, 3])], "x.pdf", {
+        type: "application/pdf",
+      }),
     );
-    const req = new Request("http://localhost/api/process", { method: "POST", body: formData });
+    const req = new Request("http://localhost/api/process", {
+      method: "POST",
+      body: formData,
+    });
     const res = await POST(req);
     expect(res.status).toBe(200);
     const json = await res.json();
@@ -44,7 +51,10 @@ describe("POST /api/process", () => {
     const { POST } = await import("@/app/api/process/route");
     const formData = new FormData();
     formData.append("granularity", "medium");
-    const req = new Request("http://localhost/api/process", { method: "POST", body: formData });
+    const req = new Request("http://localhost/api/process", {
+      method: "POST",
+      body: formData,
+    });
     const res = await POST(req);
     expect(res.status).toBe(400);
   });
@@ -53,9 +63,31 @@ describe("POST /api/process", () => {
     const { POST } = await import("@/app/api/process/route");
     const formData = new FormData();
     formData.append("granularity", "weird");
-    formData.append("files", new File([new Uint8Array([1])], "x.pdf", { type: "application/pdf" }));
-    const req = new Request("http://localhost/api/process", { method: "POST", body: formData });
+    formData.append(
+      "files",
+      new File([new Uint8Array([1])], "x.pdf", { type: "application/pdf" }),
+    );
+    const req = new Request("http://localhost/api/process", {
+      method: "POST",
+      body: formData,
+    });
     const res = await POST(req);
     expect(res.status).toBe(400);
+  });
+
+  it("accepts auto granularity", async () => {
+    const { POST } = await import("@/app/api/process/route");
+    const formData = new FormData();
+    formData.append("granularity", "auto");
+    formData.append(
+      "files",
+      new File([new Uint8Array([1])], "x.pdf", { type: "application/pdf" }),
+    );
+    const req = new Request("http://localhost/api/process", {
+      method: "POST",
+      body: formData,
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(200);
   });
 });
