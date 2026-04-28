@@ -5,7 +5,7 @@ import { StatusList } from "@/components/status-list";
 import type { PdfStatus } from "@/lib/types";
 
 describe("StatusList", () => {
-  it("renders each pdf row with stage badge", () => {
+  it("renders each pdf row with stage label", () => {
     const items: PdfStatus[] = [
       {
         pdfId: "a",
@@ -18,7 +18,9 @@ describe("StatusList", () => {
     render(<StatusList items={items} />);
     expect(screen.getByText("alpha.pdf")).toBeInTheDocument();
     expect(screen.getByText("beta.pdf")).toBeInTheDocument();
-    expect(screen.getByText("12 pages")).toBeInTheDocument();
+    expect(screen.getByText(/12/)).toBeInTheDocument();
+    expect(screen.getByText(/extracting/i)).toBeInTheDocument();
+    expect(screen.getByText(/done/i)).toBeInTheDocument();
   });
 
   it("shows error message on failed rows", () => {

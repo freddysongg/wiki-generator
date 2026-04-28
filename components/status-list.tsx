@@ -1,9 +1,8 @@
 "use client";
 
 import type { JSX } from "react";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import type { PdfStatus, Stage } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 const STAGE_LABEL: Record<Stage, string> = {
   queued: "Queued",
@@ -15,19 +14,6 @@ const STAGE_LABEL: Record<Stage, string> = {
   failed: "Failed",
 };
 
-const STAGE_VARIANT: Record<
-  Stage,
-  "default" | "secondary" | "destructive" | "outline"
-> = {
-  queued: "outline",
-  parsing: "secondary",
-  ocr: "secondary",
-  extracting: "secondary",
-  writing: "secondary",
-  done: "default",
-  failed: "destructive",
-};
-
 interface Props {
   items: PdfStatus[];
 }
@@ -35,30 +21,52 @@ interface Props {
 export function StatusList({ items }: Props): JSX.Element | null {
   if (items.length === 0) return null;
   return (
-    <Card className="divide-y divide-border">
-      {items.map((item) => (
-        <div
-          key={item.pdfId}
-          className="flex items-center justify-between gap-4 px-4 py-3"
-        >
-          <div className="flex flex-col">
-            <span className="text-sm font-mono">{item.filename}</span>
-            {item.error ? (
-              <span className="text-xs text-destructive">{item.error}</span>
-            ) : item.pagesGenerated > 0 ? (
-              <span className="text-xs text-muted-foreground">
-                {item.pagesGenerated} pages
-              </span>
-            ) : null}
-          </div>
-          <Badge
-            variant={STAGE_VARIANT[item.stage]}
-            className="font-mono text-[10px] uppercase"
+    <ul className="flex flex-col">
+      {items.map((item, idx) => {
+        const isFailed = item.stage === "failed";
+        const isDone = item.stage === "done";
+        const indexLabel = String(idx + 1).padStart(2, "0");
+        return (
+          <li
+            key={item.pdfId}
+            className="flex flex-col border-t border-rule first:border-t-0 py-2"
           >
-            {STAGE_LABEL[item.stage]}
-          </Badge>
-        </div>
-      ))}
-    </Card>
+            <div className="grid grid-cols-[28px_1fr_120px_80px] gap-3 items-baseline">
+              <span className="t-label text-fg-faint num-tabular">
+                {indexLabel}
+              </span>
+              <span className="t-body text-fg truncate" title={item.filename}>
+                {item.filename}
+              </span>
+              <span
+                className={cn(
+                  "t-eyebrow",
+                  isFailed
+                    ? "text-brand-accent"
+                    : isDone
+                      ? "text-fg"
+                      : "text-fg-mute",
+                )}
+              >
+                {STAGE_LABEL[item.stage]}
+              </span>
+              <span className="t-meta text-fg-mute text-right num-tabular">
+                {item.pagesGenerated > 0
+                  ? `${item.pagesGenerated} pgs`
+                  : "— pgs"}
+              </span>
+            </div>
+            {isFailed && item.error ? (
+              <div className="grid grid-cols-[28px_1fr] gap-3 mt-1">
+                <span aria-hidden></span>
+                <span className="t-meta text-brand-accent break-words">
+                  {item.error}
+                </span>
+              </div>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
