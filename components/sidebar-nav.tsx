@@ -32,6 +32,7 @@ export function SidebarNav(): JSX.Element {
             aria-current={isActive ? "page" : undefined}
             className={cn(
               "flex items-center justify-between px-4 py-2.5 t-label border-b border-rule last:border-b-0",
+              "focus-visible:outline focus-visible:outline-2 focus-visible:outline-fg focus-visible:outline-offset-[-2px]",
               isActive
                 ? "bg-fg text-bg font-bold"
                 : "text-fg-mute hover:bg-bg-2",
