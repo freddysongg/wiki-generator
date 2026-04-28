@@ -1,14 +1,26 @@
 import type { JSX, ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 interface Props {
   index: string;
   label: string;
   tail?: ReactNode;
+  withTopRule?: boolean;
 }
 
-export function SectionMarker({ index, label, tail }: Props): JSX.Element {
+export function SectionMarker({
+  index,
+  label,
+  tail,
+  withTopRule = true,
+}: Props): JSX.Element {
   return (
-    <div className="flex items-baseline justify-between t-label text-fg-mute pt-3 border-t border-rule">
+    <div
+      className={cn(
+        "flex items-baseline justify-between t-label text-fg-mute pt-3",
+        withTopRule && "border-t border-rule",
+      )}
+    >
       <span>
         {index} — {label}
       </span>

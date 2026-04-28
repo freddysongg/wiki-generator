@@ -43,6 +43,17 @@ export interface ExtractionResult {
   }>;
 }
 
+export interface BatchTotals {
+  pages: number;
+  links: number;
+  failed: number;
+}
+
+export interface ImportResult {
+  imported: number;
+  conflicts: number;
+}
+
 export type BatchEvent =
   | {
       type: "status";
@@ -56,5 +67,5 @@ export type BatchEvent =
   | {
       type: "complete";
       batchId: string;
-      totals: { pages: number; links: number; failed: number };
+      totals: BatchTotals;
     };

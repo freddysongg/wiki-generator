@@ -1,16 +1,12 @@
 import { mkdir, readdir, copyFile, access } from "node:fs/promises";
 import path from "node:path";
+import type { ImportResult } from "@/lib/types";
 
 export interface ImportArgs {
   stagingDir: string;
   batchId: string;
   vaultPath: string;
   wikiSubfolder: string;
-}
-
-export interface ImportResult {
-  imported: number;
-  conflicts: number;
 }
 
 async function exists(p: string): Promise<boolean> {

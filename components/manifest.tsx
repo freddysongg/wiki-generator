@@ -1,14 +1,14 @@
 "use client";
 
 import type { JSX } from "react";
-import { useBatch } from "@/components/batch-context";
+import { useBatch, type BatchStage } from "@/components/batch-context";
 
 interface Row {
   label: string;
   value: string;
 }
 
-const STAGE_LABEL: Record<string, string> = {
+const STAGE_LABEL: Record<BatchStage, string> = {
   idle: "Idle",
   queued: "Queued",
   processing: "Processing",
@@ -24,8 +24,8 @@ export function Manifest(): JSX.Element {
   const { snapshot } = useBatch();
   const totals = snapshot.totals;
   const rows: Row[] = [
-    { label: "Stage", value: STAGE_LABEL[snapshot.stage] ?? "Idle" },
-    { label: "Files", value: snapshot.fileCount.toString() },
+    { label: "Stage", value: STAGE_LABEL[snapshot.stage] },
+    { label: "Files", value: snapshot.queuedCount.toString() },
     { label: "Pages", value: asValue(totals?.pages ?? null) },
     { label: "Links", value: asValue(totals?.links ?? null) },
   ];

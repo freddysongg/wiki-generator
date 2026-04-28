@@ -1,24 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { PageHero } from "@/components/page-hero";
 import { SectionMarker } from "@/components/section-marker";
 import { UploadZone } from "@/components/upload-zone";
 import { GranularitySlider } from "@/components/granularity-slider";
 import { StatusList } from "@/components/status-list";
-import { SummaryPanel, type ImportResult } from "@/components/summary-panel";
+import { SummaryPanel } from "@/components/summary-panel";
 import { Button } from "@/components/ui/button";
 import { useBatch } from "@/components/batch-context";
 import { toast } from "sonner";
-import { subscribeToBatch } from "@/lib/sse-client";
-import type { BatchEvent, Granularity, PdfStatus } from "@/lib/types";
-
-interface BatchTotals {
-  pages: number;
-  links: number;
-  failed: number;
-}
+import type { Granularity } from "@/lib/types";
 
 interface ProcessResponse {
   batchId: string;
@@ -41,74 +34,33 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 }
 
+function formatGranularity(value: Granularity): string {
+  return value[0].toUpperCase() + value.slice(1);
+}
+
 export default function Page(): JSX.Element {
   const [files, setFiles] = useState<File[]>([]);
   const [granularity, setGranularity] = useState<Granularity>("medium");
-  const [batchId, setBatchId] = useState<string | null>(null);
-  const [statuses, setStatuses] = useState<Record<string, PdfStatus>>({});
-  const [totals, setTotals] = useState<BatchTotals | null>(null);
-  const [isImporting, setIsImporting] = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const { setSnapshot } = useBatch();
+  const { snapshot, setQueuedCount, startBatch, importBatch, isImporting } =
+    useBatch();
 
-  const items = useMemo(() => Object.values(statuses), [statuses]);
-  const isProcessing = Boolean(batchId) && totals === null;
+  const isProcessing = snapshot.stage === "processing";
+  const items = snapshot.statuses;
+  const totals = snapshot.totals;
+  const importResult = snapshot.importResult;
   const hasFiles = items.length > 0;
   const canGenerate = files.length > 0 && !isProcessing;
+  const doneCount = items.filter((item) => item.stage === "done").length;
 
   useEffect(() => {
-    let stage: "idle" | "queued" | "processing" | "complete" = "idle";
-    if (totals !== null) stage = "complete";
-    else if (isProcessing) stage = "processing";
-    else if (files.length > 0) stage = "queued";
-    setSnapshot({
-      stage,
-      fileCount: files.length || items.length,
-      statuses: items,
-      totals,
-    });
-  }, [files.length, items, isProcessing, totals, setSnapshot]);
-
-  const handleEvent = useCallback((event: BatchEvent): void => {
-    if (event.type === "status") {
-      setStatuses((prev) => {
-        const existing = prev[event.pdfId];
-        if (!existing) return prev;
-        return {
-          ...prev,
-          [event.pdfId]: {
-            ...existing,
-            stage: event.stage,
-            pagesGenerated: event.pagesGenerated,
-            error: event.error,
-          },
-        };
-      });
-      return;
-    }
-    if (event.type === "complete") {
-      setTotals(event.totals);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!batchId) return;
-    const unsubscribe = subscribeToBatch({
-      batchId,
-      onEvent: handleEvent,
-      onError: () => toast.error("Lost connection to batch stream"),
-    });
-    return unsubscribe;
-  }, [batchId, handleEvent]);
+    setQueuedCount(files.length);
+  }, [files.length, setQueuedCount]);
 
   const generate = useCallback(async (): Promise<void> => {
     if (files.length === 0) {
       toast.error("Add at least one PDF.");
       return;
     }
-    setTotals(null);
-    setImportResult(null);
-
     const form = new FormData();
     form.append("granularity", granularity);
     for (const file of files) form.append("files", file);
@@ -120,44 +72,11 @@ export default function Page(): JSX.Element {
     if (!response.ok) {
       const errorBody = (await response.json().catch(() => ({}))) as ApiError;
       toast.error(`Process failed: ${errorBody.error ?? response.status}`);
-      setStatuses({});
       return;
     }
     const body = (await response.json()) as ProcessResponse;
-
-    const seeded: Record<string, PdfStatus> = {};
-    for (const pdf of body.pdfs) {
-      seeded[pdf.pdfId] = {
-        pdfId: pdf.pdfId,
-        filename: pdf.filename,
-        stage: "queued",
-        pagesGenerated: 0,
-      };
-    }
-    setStatuses(seeded);
-    setBatchId(body.batchId);
-  }, [files, granularity]);
-
-  const importToVault = useCallback(async (): Promise<void> => {
-    if (!batchId) return;
-    setIsImporting(true);
-    try {
-      const response = await fetch(
-        `/api/import/${encodeURIComponent(batchId)}`,
-        { method: "POST" },
-      );
-      if (!response.ok) {
-        const errorBody = (await response.json().catch(() => ({}))) as ApiError;
-        toast.error(`Import failed: ${errorBody.error ?? response.status}`);
-        return;
-      }
-      const result = (await response.json()) as ImportResult;
-      setImportResult(result);
-      toast.success(`Imported ${result.imported} pages.`);
-    } finally {
-      setIsImporting(false);
-    }
-  }, [batchId]);
+    startBatch(body.batchId, body.pdfs);
+  }, [files, granularity, startBatch]);
 
   return (
     <>
@@ -173,6 +92,7 @@ export default function Page(): JSX.Element {
           index="001"
           label="Input"
           tail={`${files.length} file${files.length === 1 ? "" : "s"} queued`}
+          withTopRule={false}
         />
         <UploadZone onFiles={setFiles} disabled={isProcessing} />
         {files.length > 0 ? (
@@ -212,7 +132,7 @@ export default function Page(): JSX.Element {
         <SectionMarker
           index="002"
           label="Granularity"
-          tail={granularity[0].toUpperCase() + granularity.slice(1)}
+          tail={formatGranularity(granularity)}
         />
         <GranularitySlider value={granularity} onChange={setGranularity} />
         <div className="flex items-center justify-between pt-2">
@@ -232,7 +152,7 @@ export default function Page(): JSX.Element {
           <SectionMarker
             index="003"
             label="Pipeline"
-            tail={`${items.filter((i) => i.stage === "done").length} / ${items.length} complete`}
+            tail={`${doneCount} / ${items.length} complete`}
           />
           <StatusList items={items} />
         </section>
@@ -245,7 +165,7 @@ export default function Page(): JSX.Element {
             totals={totals}
             importing={isImporting}
             importResult={importResult}
-            onImport={importToVault}
+            onImport={importBatch}
           />
         </section>
       ) : null}

@@ -3,21 +3,32 @@
 import type { JSX, ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
-import { useBatch } from "@/components/batch-context";
+import { useBatch, type BatchStage } from "@/components/batch-context";
 
-const VIEW_LABEL: Record<string, string> = {
+type ViewPath = "/" | "/graph" | "/plugins" | "/history";
+
+const VIEW_LABEL: Record<ViewPath, string> = {
   "/": "Generate",
   "/graph": "Graph",
   "/plugins": "Plugins",
   "/history": "History",
 };
 
-const STAGE_PHRASE: Record<string, string> = {
+const STAGE_PHRASE: Record<BatchStage, string> = {
   idle: "Ready",
   queued: "Queued",
   processing: "Processing",
   complete: "Complete",
 };
+
+function isViewPath(value: string): value is ViewPath {
+  return (
+    value === "/" ||
+    value === "/graph" ||
+    value === "/plugins" ||
+    value === "/history"
+  );
+}
 
 interface Props {
   children: ReactNode;
@@ -25,11 +36,11 @@ interface Props {
 
 export function AppShell({ children }: Props): JSX.Element {
   const pathname = usePathname();
-  const view = VIEW_LABEL[pathname] ?? "Generate";
+  const view = isViewPath(pathname) ? VIEW_LABEL[pathname] : "Generate";
   const { snapshot } = useBatch();
-  const stagePhrase = STAGE_PHRASE[snapshot.stage] ?? "Ready";
+  const stagePhrase = STAGE_PHRASE[snapshot.stage];
 
-  let topRight = `${stagePhrase} · ${snapshot.fileCount} queued`;
+  let topRight = `${stagePhrase} · ${snapshot.queuedCount} queued`;
   let bottomLeft = stagePhrase;
   if (snapshot.stage === "processing") {
     const done = snapshot.statuses.filter((s) => s.stage === "done").length;

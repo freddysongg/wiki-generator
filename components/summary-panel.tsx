@@ -3,17 +3,7 @@
 import type { JSX } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-
-export interface ImportResult {
-  imported: number;
-  conflicts: number;
-}
-
-interface BatchTotals {
-  pages: number;
-  links: number;
-  failed: number;
-}
+import type { BatchTotals, ImportResult } from "@/lib/types";
 
 interface Props {
   totals: BatchTotals;
@@ -22,10 +12,12 @@ interface Props {
   onImport: () => void;
 }
 
+type CellTone = "neutral" | "warn";
+
 interface Cell {
   label: string;
   value: number;
-  isWarn: boolean;
+  tone: CellTone;
 }
 
 export function SummaryPanel({
@@ -35,9 +27,13 @@ export function SummaryPanel({
   onImport,
 }: Props): JSX.Element {
   const cells: Cell[] = [
-    { label: "Pages", value: totals.pages, isWarn: false },
-    { label: "Links", value: totals.links, isWarn: false },
-    { label: "Failed", value: totals.failed, isWarn: totals.failed > 0 },
+    { label: "Pages", value: totals.pages, tone: "neutral" },
+    { label: "Links", value: totals.links, tone: "neutral" },
+    {
+      label: "Failed",
+      value: totals.failed,
+      tone: totals.failed > 0 ? "warn" : "neutral",
+    },
   ];
   return (
     <div className="flex flex-col gap-3">
@@ -54,7 +50,7 @@ export function SummaryPanel({
             <span
               className={cn(
                 "t-hero num-tabular",
-                cell.isWarn ? "text-brand-accent" : "text-fg",
+                cell.tone === "warn" ? "text-brand-accent" : "text-fg",
               )}
             >
               {cell.value}
