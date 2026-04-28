@@ -1,48 +1,77 @@
 "use client";
 
 import type { JSX } from "react";
-import { Button } from "@/components/ui/button";
 import type { Granularity } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 interface Props {
   value: Granularity;
   onChange: (value: Granularity) => void;
 }
 
-const OPTIONS: ReadonlyArray<{
+interface Option {
   value: Granularity;
   label: string;
   hint: string;
-}> = [
-  { value: "coarse", label: "Coarse", hint: "few dense pages" },
-  { value: "medium", label: "Medium", hint: "one per concept" },
-  { value: "fine", label: "Fine", hint: "many small pages" },
+  isAuto: boolean;
+}
+
+const OPTIONS: ReadonlyArray<Option> = [
+  { value: "coarse", label: "Coarse", hint: "few dense pages", isAuto: false },
+  { value: "medium", label: "Medium", hint: "one per concept", isAuto: false },
+  { value: "fine", label: "Fine", hint: "many small pages", isAuto: false },
+  {
+    value: "auto",
+    label: "Auto",
+    hint: "model decides per document",
+    isAuto: true,
+  },
 ];
 
 export function GranularitySlider({ value, onChange }: Props): JSX.Element {
+  const activeHint = OPTIONS.find((opt) => opt.value === value)?.hint ?? "";
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
-        Granularity
-      </span>
-      <div className="inline-flex gap-1 rounded-md border border-border bg-muted p-1">
-        {OPTIONS.map((opt) => (
-          <Button
-            key={opt.value}
-            type="button"
-            variant={opt.value === value ? "default" : "ghost"}
-            size="sm"
-            data-active={opt.value === value}
-            onClick={() => onChange(opt.value)}
-            className="h-8 px-3 text-xs"
-          >
-            {opt.label}
-          </Button>
-        ))}
+      <div
+        role="radiogroup"
+        aria-label="granularity"
+        className="grid grid-cols-4 border border-rule"
+      >
+        {OPTIONS.map((opt, idx) => {
+          const isActive = opt.value === value;
+          return (
+            <button
+              key={opt.value}
+              role="radio"
+              aria-checked={isActive}
+              type="button"
+              onClick={() => onChange(opt.value)}
+              data-active={isActive}
+              className={cn(
+                "relative flex items-center justify-center px-3 py-2 t-label",
+                idx > 0 && "border-l border-rule",
+                isActive
+                  ? "bg-fg text-bg"
+                  : "bg-transparent text-fg-mute hover:bg-bg-2",
+              )}
+            >
+              <span>{opt.label}</span>
+              {opt.isAuto ? (
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute top-1 right-1 t-eyebrow",
+                    isActive ? "text-bg" : "text-fg-faint",
+                  )}
+                >
+                  AI
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
       </div>
-      <span className="text-xs text-muted-foreground">
-        {OPTIONS.find((o) => o.value === value)?.hint}
-      </span>
+      <span className="t-meta text-fg-mute">{activeHint}</span>
     </div>
   );
 }
