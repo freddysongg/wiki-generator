@@ -2,8 +2,7 @@
 
 import type { JSX } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface ImportResult {
   imported: number;
@@ -23,72 +22,60 @@ interface Props {
   onImport: () => void;
 }
 
+interface Cell {
+  label: string;
+  value: number;
+  isWarn: boolean;
+}
+
 export function SummaryPanel({
   totals,
   importing,
   importResult,
   onImport,
 }: Props): JSX.Element {
+  const cells: Cell[] = [
+    { label: "Pages", value: totals.pages, isWarn: false },
+    { label: "Links", value: totals.links, isWarn: false },
+    { label: "Failed", value: totals.failed, isWarn: totals.failed > 0 },
+  ];
   return (
-    <Card className="flex flex-col gap-4 p-5">
-      <div className="flex items-center gap-2 text-sm">
-        <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-hidden />
-        <span>Batch complete.</span>
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-3 border-y border-rule py-3">
+        {cells.map((cell, idx) => (
+          <div
+            key={cell.label}
+            className={cn(
+              "flex flex-col gap-1 px-3",
+              idx > 0 && "border-l border-rule",
+            )}
+          >
+            <span className="t-eyebrow text-fg-mute">{cell.label}</span>
+            <span
+              className={cn(
+                "t-hero num-tabular",
+                cell.isWarn ? "text-brand-accent" : "text-fg",
+              )}
+            >
+              {cell.value}
+            </span>
+          </div>
+        ))}
       </div>
-      <div className="grid grid-cols-3 gap-3 text-sm font-mono">
-        <Stat label="pages" value={totals.pages} />
-        <Stat label="links" value={totals.links} />
-        <Stat
-          label="failed"
-          value={totals.failed}
-          tone={totals.failed > 0 ? "warn" : "ok"}
-        />
+      <div className="flex items-center justify-between">
+        <span className="t-meta text-fg-mute">Awaiting import</span>
+        <Button onClick={onImport} disabled={importing}>
+          {importing ? "Importing…" : "Import to Wiki"}
+        </Button>
       </div>
-      <Button onClick={onImport} disabled={importing} className="self-start">
-        {importing ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Importing…
-          </>
-        ) : (
-          "Import to Wiki"
-        )}
-      </Button>
       {importResult ? (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <AlertCircle className="h-3 w-3" aria-hidden />
-          <span>
-            Imported {importResult.imported}, {importResult.conflicts} renamed.
-          </span>
+        <div className="t-meta text-fg">
+          Imported {importResult.imported}
+          {importResult.conflicts > 0
+            ? `, ${importResult.conflicts} renamed`
+            : ""}
         </div>
       ) : null}
-    </Card>
-  );
-}
-
-interface StatProps {
-  label: string;
-  value: number;
-  tone?: "ok" | "warn";
-}
-
-function Stat({ label, value, tone = "ok" }: StatProps): JSX.Element {
-  return (
-    <div className="flex flex-col">
-      <span className="sr-only">
-        {value} {label}
-      </span>
-      <span
-        aria-hidden
-        className={tone === "warn" ? "text-amber-500" : "text-foreground"}
-      >
-        {value}
-      </span>
-      <span
-        aria-hidden
-        className="text-xs uppercase tracking-wider text-muted-foreground"
-      >
-        {label}
-      </span>
     </div>
   );
 }

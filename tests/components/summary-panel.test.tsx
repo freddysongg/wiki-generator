@@ -14,9 +14,12 @@ describe("SummaryPanel", () => {
         onImport={onImport}
       />,
     );
-    expect(screen.getByText(/42 pages/)).toBeInTheDocument();
-    expect(screen.getByText(/88 links/)).toBeInTheDocument();
-    expect(screen.getByText(/1 failed/)).toBeInTheDocument();
+    expect(screen.getByText("Pages")).toBeInTheDocument();
+    expect(screen.getByText("Links")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.getByText("42")).toBeInTheDocument();
+    expect(screen.getByText("88")).toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /import to wiki/i }));
     expect(onImport).toHaveBeenCalledTimes(1);
   });
