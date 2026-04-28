@@ -7,7 +7,7 @@ export default function PluginsPage(): JSX.Element {
       <PageHero
         eyebrow="View 03"
         headline="Plugins."
-        description="Connect Obsidian plugins to the generator. Coming soon."
+        description="Wire third-party integrations. Coming soon."
       />
       <div className="border border-rule px-5 py-6 t-body text-fg-mute">
         Coming soon.
