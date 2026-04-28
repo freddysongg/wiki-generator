@@ -11,6 +11,7 @@ import { renderPdfPageToPng } from "@/lib/pipeline/render-page";
 import { ocrPageImage } from "@/lib/pipeline/ocr-fallback";
 import { scanVaultTitles } from "@/lib/pipeline/scan-vault";
 import { extractConcepts } from "@/lib/pipeline/extract-concepts";
+import { pickGranularity } from "@/lib/pipeline/pick-granularity";
 import type { Granularity } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -70,6 +71,13 @@ export async function POST(req: Request): Promise<Response> {
       ocrPageImage: (png) =>
         ocrPageImage({ client: llm, model: cfg.ocrModel }, png),
       scanVaultTitles: (vaultPath) => scanVaultTitles(vaultPath),
+      pickGranularity: (args) =>
+        pickGranularity({
+          client: llm,
+          model: cfg.granularityPickerModel,
+          pdfText: args.pdfText,
+          pageCount: args.pageCount,
+        }),
       extractConcepts: (args) =>
         extractConcepts({
           client: llm,

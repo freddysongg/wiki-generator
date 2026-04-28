@@ -12,6 +12,7 @@ vi.mock("@/lib/config", () => ({
     wikiSubfolder: "wiki",
     extractionModel: "claude-sonnet-4-6",
     ocrModel: "claude-haiku-4-5-20251001",
+    granularityPickerModel: "claude-haiku-4-5-20251001",
     maxConcurrentPdfs: 1,
     ocrTextThreshold: 100,
   }),
