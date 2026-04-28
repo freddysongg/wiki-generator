@@ -77,6 +77,7 @@ describe("POST /api/process", () => {
 
   it("accepts auto granularity", async () => {
     const { POST } = await import("@/app/api/process/route");
+    const { runBatch } = await import("@/lib/pipeline/run-batch");
     const formData = new FormData();
     formData.append("granularity", "auto");
     formData.append(
@@ -89,5 +90,8 @@ describe("POST /api/process", () => {
     });
     const res = await POST(req);
     expect(res.status).toBe(200);
+    expect(runBatch).toHaveBeenCalledWith(
+      expect.objectContaining({ granularity: "auto" }),
+    );
   });
 });
