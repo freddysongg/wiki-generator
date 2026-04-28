@@ -54,7 +54,7 @@ export async function pickGranularity(
   deps: PickGranularityDeps,
 ): Promise<ResolvedGranularity> {
   const sample = buildSample(deps.pdfText);
-  const body = `Page count: ${deps.pageCount}\n\nSample:\n${sample}`;
+  const body = `Page count: ${deps.pageCount}\n\nSample (first 3000 chars + last 500 chars):\n${sample}`;
 
   let lastError: string | undefined;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {

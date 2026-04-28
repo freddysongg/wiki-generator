@@ -50,6 +50,12 @@ describe("pickGranularity", () => {
     expect(req.body).not.toContain(middle);
     expect(req.body).toContain("[…]");
     expect(req.body).toContain("Page count: 12");
+    expect(req.systemPrompt).toContain(
+      "You MUST call the pick_granularity tool",
+    );
+    expect(req.systemPrompt).toContain(
+      "If the document is ambiguous between two levels, choose the lower one.",
+    );
   });
 
   it("sends the document verbatim when shorter than the threshold", async () => {
