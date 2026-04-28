@@ -7,7 +7,7 @@ export type Stage =
   | "done"
   | "failed";
 
-export type Granularity = "coarse" | "medium" | "fine";
+export type Granularity = "coarse" | "medium" | "fine" | "auto";
 
 export interface PdfStatus {
   pdfId: string;
