@@ -4,6 +4,7 @@ import type {
   ExtractionResult,
   GeneratedPage,
   Granularity,
+  ResolvedGranularity,
   Stage,
 } from "@/lib/types";
 import { writeStaging } from "@/lib/pipeline/write-staging";
@@ -20,10 +21,14 @@ export interface BatchHooks {
   renderPdfPageToPng: (bytes: Uint8Array, pageNumber: number) => Promise<Uint8Array>;
   ocrPageImage: (png: Uint8Array) => Promise<string>;
   scanVaultTitles: (vaultPath: string) => Promise<Set<string>>;
+  pickGranularity: (args: {
+    pdfText: string;
+    pageCount: number;
+  }) => Promise<ResolvedGranularity>;
   extractConcepts: (args: {
     pdfText: string;
     vaultTitles: string[];
-    granularity: Granularity;
+    granularity: ResolvedGranularity;
   }) => Promise<ExtractionResult>;
 }
 
@@ -99,10 +104,30 @@ async function processPdf(
     const fullText = parsed
       .map((p) => `[Page ${p.pageNumber}]\n${p.text}`)
       .join("\n\n");
+
+    let resolvedGranularity: ResolvedGranularity;
+    if (granularity === "auto") {
+      try {
+        resolvedGranularity = await hooks.pickGranularity({
+          pdfText: fullText,
+          pageCount: parsed.length,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(
+          `[run-batch] pickGranularity failed for ${pdf.filename}; falling back to medium:`,
+          message,
+        );
+        resolvedGranularity = "medium";
+      }
+    } else {
+      resolvedGranularity = granularity;
+    }
+
     const result = await hooks.extractConcepts({
       pdfText: fullText,
       vaultTitles: Array.from(vaultTitles),
-      granularity,
+      granularity: resolvedGranularity,
     });
 
     const knownThisBatch = new Set<string>(vaultTitles);

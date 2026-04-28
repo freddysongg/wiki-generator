@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ExtractionResult, Granularity } from "@/lib/types";
+import type { ExtractionResult, ResolvedGranularity } from "@/lib/types";
 import type { LlmClient } from "@/lib/llm";
 
 export interface ExtractDeps {
@@ -7,7 +7,7 @@ export interface ExtractDeps {
   model: string;
   pdfText: string;
   vaultTitles: string[];
-  granularity: Granularity;
+  granularity: ResolvedGranularity;
 }
 
 const SYSTEM_PROMPT = `You are an expert at distilling reading material into a personal Markdown wiki.
@@ -74,10 +74,7 @@ export async function extractConcepts(
   deps: ExtractDeps,
 ): Promise<ExtractionResult> {
   const cacheableContext = `Vault titles already present (use these for cross-references when they match):\n${deps.vaultTitles.join("\n")}`;
-  /* auto granularity defaults to medium until backend support lands; spec 2026-04-28 */
-  const promptGranularity =
-    deps.granularity === "auto" ? "medium" : deps.granularity;
-  const body = `Granularity: ${promptGranularity}\n\nPDF text:\n${deps.pdfText}`;
+  const body = `Granularity: ${deps.granularity}\n\nPDF text:\n${deps.pdfText}`;
 
   let lastError: string | undefined;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {

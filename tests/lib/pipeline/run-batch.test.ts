@@ -43,6 +43,7 @@ describe("runBatch", () => {
         renderPdfPageToPng: vi.fn(),
         ocrPageImage: vi.fn(),
         scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>(["Existing"])),
+        pickGranularity: vi.fn().mockResolvedValue("medium"),
         extractConcepts: vi.fn().mockResolvedValue({
           pages: [{ title: "Concept", body: "Body [[Existing]]", sourcePages: "p.1", links: ["Existing"] }],
         }),
@@ -77,6 +78,7 @@ describe("runBatch", () => {
         renderPdfPageToPng: vi.fn().mockResolvedValue(new Uint8Array([0x89])),
         ocrPageImage: ocr,
         scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>()),
+        pickGranularity: vi.fn().mockResolvedValue("medium"),
         extractConcepts: vi.fn().mockResolvedValue({
           pages: [{ title: "X", body: "B", sourcePages: "p.1", links: [] }],
         }),
@@ -110,6 +112,7 @@ describe("runBatch", () => {
         renderPdfPageToPng: vi.fn(),
         ocrPageImage: vi.fn(),
         scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>()),
+        pickGranularity: vi.fn().mockResolvedValue("medium"),
         extractConcepts: vi.fn().mockResolvedValue({
           pages: [{ title: "T", body: "B", sourcePages: "p.1", links: [] }],
         }),
@@ -145,11 +148,110 @@ describe("runBatch", () => {
           .mockRejectedValueOnce(new Error("vision down"))
           .mockResolvedValueOnce("recovered"),
         scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>()),
+        pickGranularity: vi.fn().mockResolvedValue("medium"),
         extractConcepts: vi.fn().mockResolvedValue({
           pages: [{ title: "T", body: "B", sourcePages: "p.1-2", links: [] }],
         }),
       },
     });
+    const done = events.find((e) => e.type === "status" && e.stage === "done");
+    expect(done).toBeDefined();
+  });
+
+  it("calls pickGranularity per pdf when granularity is auto and forwards the result", async () => {
+    const bus = new EventBus();
+    const picker = vi.fn().mockResolvedValue("fine");
+    const extract = vi.fn().mockResolvedValue({
+      pages: [{ title: "T", body: "B", sourcePages: "p.1", links: [] }],
+    });
+
+    await runBatch({
+      bus,
+      batchId: "bauto",
+      granularity: "auto",
+      stagingDir: staging,
+      vaultPath: vault,
+      maxConcurrent: 2,
+      pdfs: [
+        { pdfId: "p1", filename: "a.pdf", bytes: new Uint8Array([1]) },
+        { pdfId: "p2", filename: "b.pdf", bytes: new Uint8Array([2]) },
+      ],
+      hooks: {
+        parsePdf: vi
+          .fn()
+          .mockResolvedValue([{ pageNumber: 1, text: "the page", kind: "text" }]),
+        renderPdfPageToPng: vi.fn(),
+        ocrPageImage: vi.fn(),
+        scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>()),
+        pickGranularity: picker,
+        extractConcepts: extract,
+      },
+    });
+
+    expect(picker).toHaveBeenCalledTimes(2);
+    expect(extract).toHaveBeenCalledTimes(2);
+    expect(extract.mock.calls[0]?.[0]?.granularity).toBe("fine");
+    expect(extract.mock.calls[1]?.[0]?.granularity).toBe("fine");
+  });
+
+  it("does not call pickGranularity when granularity is non-auto", async () => {
+    const bus = new EventBus();
+    const picker = vi.fn().mockResolvedValue("fine");
+    await runBatch({
+      bus,
+      batchId: "bskip",
+      granularity: "coarse",
+      stagingDir: staging,
+      vaultPath: vault,
+      maxConcurrent: 1,
+      pdfs: [{ pdfId: "p1", filename: "a.pdf", bytes: new Uint8Array([1]) }],
+      hooks: {
+        parsePdf: vi
+          .fn()
+          .mockResolvedValue([{ pageNumber: 1, text: "ok", kind: "text" }]),
+        renderPdfPageToPng: vi.fn(),
+        ocrPageImage: vi.fn(),
+        scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>()),
+        pickGranularity: picker,
+        extractConcepts: vi.fn().mockResolvedValue({
+          pages: [{ title: "T", body: "B", sourcePages: "p.1", links: [] }],
+        }),
+      },
+    });
+    expect(picker).not.toHaveBeenCalled();
+  });
+
+  it("falls back to medium and continues when pickGranularity throws", async () => {
+    const bus = new EventBus();
+    const events: BatchEvent[] = [];
+    bus.subscribe("bfail", (e) => events.push(e));
+    const picker = vi.fn().mockRejectedValue(new Error("classifier down"));
+    const extract = vi.fn().mockResolvedValue({
+      pages: [{ title: "T", body: "B", sourcePages: "p.1", links: [] }],
+    });
+
+    await runBatch({
+      bus,
+      batchId: "bfail",
+      granularity: "auto",
+      stagingDir: staging,
+      vaultPath: vault,
+      maxConcurrent: 1,
+      pdfs: [{ pdfId: "p1", filename: "a.pdf", bytes: new Uint8Array([1]) }],
+      hooks: {
+        parsePdf: vi
+          .fn()
+          .mockResolvedValue([{ pageNumber: 1, text: "ok", kind: "text" }]),
+        renderPdfPageToPng: vi.fn(),
+        ocrPageImage: vi.fn(),
+        scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>()),
+        pickGranularity: picker,
+        extractConcepts: extract,
+      },
+    });
+
+    expect(picker).toHaveBeenCalledTimes(1);
+    expect(extract.mock.calls[0]?.[0]?.granularity).toBe("medium");
     const done = events.find((e) => e.type === "status" && e.stage === "done");
     expect(done).toBeDefined();
   });
