@@ -1,0 +1,51 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import type { JSX } from "react";
+import { cn } from "@/lib/utils";
+
+interface NavItem {
+  index: string;
+  label: string;
+  href: string;
+  status: "active" | "soon";
+}
+
+const ITEMS: ReadonlyArray<NavItem> = [
+  { index: "01", label: "Generate", href: "/", status: "active" },
+  { index: "02", label: "Graph", href: "/graph", status: "soon" },
+  { index: "03", label: "Plugins", href: "/plugins", status: "soon" },
+  { index: "04", label: "History", href: "/history", status: "soon" },
+];
+
+export function SidebarNav(): JSX.Element {
+  const pathname = usePathname();
+  return (
+    <nav className="flex flex-col border-b border-rule">
+      {ITEMS.map((item) => {
+        const isActive = pathname === item.href;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={isActive ? "page" : undefined}
+            className={cn(
+              "flex items-center justify-between px-4 py-2.5 t-label border-b border-rule last:border-b-0",
+              isActive
+                ? "bg-fg text-bg font-bold"
+                : "text-fg-mute hover:bg-bg-2",
+            )}
+          >
+            <span>
+              {item.index} · {item.label}
+            </span>
+            {item.status === "soon" && !isActive ? (
+              <span className="t-eyebrow text-fg-faint">soon</span>
+            ) : null}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
