@@ -117,11 +117,16 @@ export function BatchProvider({
         const response = await fetch(
           `/api/manifest/${encodeURIComponent(batchId)}`,
         );
-        if (!response.ok) return;
+        if (!response.ok) {
+          console.error(
+            `[batch-context] manifest fetch failed: ${response.status}`,
+          );
+          return;
+        }
         const json = (await response.json()) as BatchManifest;
         if (!isCancelled) setManifest(json);
-      } catch {
-        // manifest fetch is best-effort; UI degrades gracefully without it
+      } catch (err) {
+        console.error("[batch-context] manifest fetch error:", err);
       }
     })();
     return () => {

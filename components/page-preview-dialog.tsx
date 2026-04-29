@@ -53,12 +53,16 @@ export function PagePreviewDialog({
           `/api/batches/${encodeURIComponent(batchId)}/pages/${encodeURIComponent(filename)}`,
         );
         if (!response.ok) {
+          console.error(
+            `[page-preview] body fetch failed: ${response.status}`,
+          );
           if (!isCancelled) setState({ status: "error" });
           return;
         }
         const text = await response.text();
         if (!isCancelled) setState({ status: "ready", markdown: text });
-      } catch {
+      } catch (err) {
+        console.error("[page-preview] body fetch error:", err);
         if (!isCancelled) setState({ status: "error" });
       }
     })();
