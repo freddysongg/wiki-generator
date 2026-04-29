@@ -2,6 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { StatusList } from "@/components/status-list";
+import { BatchProvider } from "@/components/batch-context";
 import type { PdfStatus } from "@/lib/types";
 
 describe("StatusList", () => {
@@ -15,7 +16,11 @@ describe("StatusList", () => {
       },
       { pdfId: "b", filename: "beta.pdf", stage: "done", pagesGenerated: 12 },
     ];
-    render(<StatusList items={items} />);
+    render(
+      <BatchProvider>
+        <StatusList items={items} />
+      </BatchProvider>,
+    );
     expect(screen.getByText("alpha.pdf")).toBeInTheDocument();
     expect(screen.getByText("beta.pdf")).toBeInTheDocument();
     expect(screen.getByText(/12/)).toBeInTheDocument();
@@ -33,7 +38,23 @@ describe("StatusList", () => {
         error: "boom",
       },
     ];
-    render(<StatusList items={items} />);
+    render(
+      <BatchProvider>
+        <StatusList items={items} />
+      </BatchProvider>,
+    );
     expect(screen.getByText(/boom/)).toBeInTheDocument();
+  });
+
+  it("does not render an expand chevron when manifest is not loaded", () => {
+    const items: PdfStatus[] = [
+      { pdfId: "a", filename: "alpha.pdf", stage: "done", pagesGenerated: 3 },
+    ];
+    render(
+      <BatchProvider>
+        <StatusList items={items} onPageOpen={() => {}} />
+      </BatchProvider>,
+    );
+    expect(screen.queryByRole("button", { name: /expand pages/i })).toBeNull();
   });
 });

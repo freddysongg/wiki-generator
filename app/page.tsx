@@ -8,10 +8,12 @@ import { UploadZone } from "@/components/upload-zone";
 import { GranularitySlider } from "@/components/granularity-slider";
 import { StatusList } from "@/components/status-list";
 import { SummaryPanel } from "@/components/summary-panel";
+import { GraphPreview } from "@/components/graph-preview";
+import { PagePreviewDialog } from "@/components/page-preview-dialog";
 import { Button } from "@/components/ui/button";
 import { useBatch } from "@/components/batch-context";
 import { toast } from "sonner";
-import type { Granularity } from "@/lib/types";
+import type { Granularity, ManifestPage } from "@/lib/types";
 
 interface ProcessResponse {
   batchId: string;
@@ -41,8 +43,11 @@ function formatGranularity(value: Granularity): string {
 export default function Page(): JSX.Element {
   const [files, setFiles] = useState<File[]>([]);
   const [granularity, setGranularity] = useState<Granularity>("medium");
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [selectedPage, setSelectedPage] = useState<ManifestPage | null>(null);
   const { snapshot, setQueuedCount, startBatch, importBatch, isImporting } =
     useBatch();
+  const previewBatchId = snapshot.manifest?.batchId ?? null;
 
   const isProcessing = snapshot.stage === "processing";
   const items = snapshot.statuses;
@@ -75,6 +80,7 @@ export default function Page(): JSX.Element {
       return;
     }
     const body = (await response.json()) as ProcessResponse;
+    setBatchId(body.batchId);
     startBatch(body.batchId, body.pdfs);
   }, [files, granularity, startBatch]);
 
@@ -154,13 +160,20 @@ export default function Page(): JSX.Element {
             label="Pipeline"
             tail={`${doneCount} / ${items.length} complete`}
           />
-          <StatusList items={items} />
+          <StatusList items={items} onPageOpen={setSelectedPage} />
+        </section>
+      ) : null}
+
+      {batchId && totals !== null ? (
+        <section className="flex flex-col gap-3">
+          <SectionMarker index="004" label="Graph" tail="Preview" />
+          <GraphPreview batchId={batchId} />
         </section>
       ) : null}
 
       {totals !== null ? (
         <section className="flex flex-col gap-3">
-          <SectionMarker index="004" label="Output" tail="Ready" />
+          <SectionMarker index="005" label="Output" tail="Ready" />
           <SummaryPanel
             totals={totals}
             importing={isImporting}
@@ -169,6 +182,18 @@ export default function Page(): JSX.Element {
           />
         </section>
       ) : null}
+
+      <PagePreviewDialog
+        open={selectedPage !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setSelectedPage(null);
+        }}
+        batchId={previewBatchId}
+        filename={selectedPage?.filename ?? null}
+        title={selectedPage?.title ?? null}
+        source={selectedPage?.source ?? null}
+        sourcePages={selectedPage?.sourcePages ?? null}
+      />
     </>
   );
 }
