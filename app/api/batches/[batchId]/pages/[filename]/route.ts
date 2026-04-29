@@ -23,11 +23,10 @@ export async function GET(
   _req: Request,
   ctx: { params: Promise<Params> },
 ): Promise<Response> {
-  const { batchId, filename: rawFilename } = await ctx.params;
+  const { batchId, filename } = await ctx.params;
   if (!isValidBatchId(batchId)) {
     return NextResponse.json({ error: "invalid batch id" }, { status: 400 });
   }
-  const filename = decodeURIComponent(rawFilename);
   const stagingDir = stagingRoot();
   const batchDir = path.join(stagingDir, batchId);
 
@@ -57,6 +56,14 @@ export async function GET(
 
   const isAllowed = manifest.data.pages.some((p) => p.filename === filename);
   if (!isAllowed) {
+    return NextResponse.json({ error: "page not found" }, { status: 404 });
+  }
+
+  if (
+    filename.includes("/") ||
+    filename.includes("\\") ||
+    filename.includes("\0")
+  ) {
     return NextResponse.json({ error: "page not found" }, { status: 404 });
   }
 

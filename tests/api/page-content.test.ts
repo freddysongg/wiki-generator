@@ -80,7 +80,7 @@ describe("GET /api/batches/:batchId/pages/:filename", () => {
       {
         params: Promise.resolve({
           batchId: VALID_BATCH_ID,
-          filename: encodeURIComponent(VALID_FILENAME),
+          filename: VALID_FILENAME,
         }),
       },
     );
@@ -97,7 +97,7 @@ describe("GET /api/batches/:batchId/pages/:filename", () => {
     const res = await GET(new Request("http://localhost"), {
       params: Promise.resolve({
         batchId: "../etc",
-        filename: encodeURIComponent("anything.md"),
+        filename: "anything.md",
       }),
     });
     expect(res.status).toBe(400);
@@ -110,7 +110,7 @@ describe("GET /api/batches/:batchId/pages/:filename", () => {
     const res = await GET(new Request("http://localhost"), {
       params: Promise.resolve({
         batchId: "nonexistent-batch",
-        filename: encodeURIComponent("anything.md"),
+        filename: "anything.md",
       }),
     });
     expect(res.status).toBe(404);
@@ -124,7 +124,47 @@ describe("GET /api/batches/:batchId/pages/:filename", () => {
     const res = await GET(new Request("http://localhost"), {
       params: Promise.resolve({
         batchId: VALID_BATCH_ID,
-        filename: encodeURIComponent("../../etc/passwd"),
+        filename: "../../etc/passwd",
+      }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when filename contains a path separator even if it matches the manifest", async () => {
+    const dir = path.join(staging, VALID_BATCH_ID);
+    await mkdir(dir, { recursive: true });
+    const manifest = {
+      version: "1.0.0",
+      batchId: VALID_BATCH_ID,
+      createdAt: "2026-04-29T00:00:00.000Z",
+      granularity: "medium",
+      pages: [
+        {
+          title: "Bad",
+          filename: "../../../etc/passwd",
+          aliases: [],
+          type: "concept",
+          source: "alpha.pdf",
+          sourcePages: "p. 1",
+          tags: ["wiki-generator"],
+          links: [],
+          createdAt: "2026-04-29T00:00:00.000Z",
+        },
+      ],
+    };
+    await writeFile(
+      path.join(dir, "manifest.json"),
+      JSON.stringify(manifest),
+      "utf8",
+    );
+
+    const { GET } = await import(
+      "@/app/api/batches/[batchId]/pages/[filename]/route"
+    );
+    const res = await GET(new Request("http://localhost"), {
+      params: Promise.resolve({
+        batchId: VALID_BATCH_ID,
+        filename: "../../../etc/passwd",
       }),
     });
     expect(res.status).toBe(404);
