@@ -14,8 +14,10 @@ import { toast } from "sonner";
 import { subscribeToBatch } from "@/lib/sse-client";
 import type {
   BatchEvent,
+  BatchManifest,
   BatchTotals,
   ImportResult,
+  ManifestPage,
   PdfStatus,
 } from "@/lib/types";
 
@@ -27,6 +29,7 @@ export interface BatchSnapshot {
   statuses: PdfStatus[];
   totals: BatchTotals | null;
   importResult: ImportResult | null;
+  manifest: BatchManifest | null;
 }
 
 interface SeedPdf {
@@ -41,6 +44,7 @@ interface BatchContextValue {
   importBatch: () => Promise<void>;
   isImporting: boolean;
   resetBatch: () => void;
+  getPagesForSource: (source: string) => ManifestPage[];
 }
 
 const BatchContext = createContext<BatchContextValue | null>(null);
@@ -71,6 +75,7 @@ export function BatchProvider({
     null,
   );
   const [isImporting, setIsImporting] = useState<boolean>(false);
+  const [manifest, setManifest] = useState<BatchManifest | null>(null);
 
   const handleEvent = useCallback((event: BatchEvent): void => {
     if (event.type === "status") {
@@ -104,6 +109,26 @@ export function BatchProvider({
     return unsubscribe;
   }, [batchId, handleEvent]);
 
+  useEffect(() => {
+    if (totals === null || !batchId || manifest !== null) return;
+    let isCancelled = false;
+    void (async (): Promise<void> => {
+      try {
+        const response = await fetch(
+          `/api/manifest/${encodeURIComponent(batchId)}`,
+        );
+        if (!response.ok) return;
+        const json = (await response.json()) as BatchManifest;
+        if (!isCancelled) setManifest(json);
+      } catch {
+        // manifest fetch is best-effort; UI degrades gracefully without it
+      }
+    })();
+    return () => {
+      isCancelled = true;
+    };
+  }, [totals, batchId, manifest]);
+
   const setQueuedCount = useCallback((count: number): void => {
     setQueuedCountState(count);
   }, []);
@@ -122,6 +147,7 @@ export function BatchProvider({
       setStatuses(seeded);
       setTotals(null);
       setImportResultState(null);
+      setManifest(null);
       setBatchId(id);
     },
     [],
@@ -155,6 +181,7 @@ export function BatchProvider({
     setStatuses({});
     setTotals(null);
     setImportResultState(null);
+    setManifest(null);
   }, []);
 
   const statusList = useMemo(() => Object.values(statuses), [statuses]);
@@ -167,8 +194,17 @@ export function BatchProvider({
       statuses: statusList,
       totals,
       importResult,
+      manifest,
     };
-  }, [batchId, totals, queuedCount, statusList, importResult]);
+  }, [batchId, totals, queuedCount, statusList, importResult, manifest]);
+
+  const getPagesForSource = useCallback(
+    (source: string): ManifestPage[] => {
+      if (!manifest) return [];
+      return manifest.pages.filter((p) => p.source === source);
+    },
+    [manifest],
+  );
 
   const value = useMemo<BatchContextValue>(
     () => ({
@@ -178,6 +214,7 @@ export function BatchProvider({
       importBatch,
       isImporting,
       resetBatch,
+      getPagesForSource,
     }),
     [
       snapshot,
@@ -186,6 +223,7 @@ export function BatchProvider({
       importBatch,
       isImporting,
       resetBatch,
+      getPagesForSource,
     ],
   );
 
