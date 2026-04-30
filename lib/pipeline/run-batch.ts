@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
 import type { EventBus } from "@/lib/events/bus";
 import type {
   BatchEvent,
@@ -8,6 +10,7 @@ import type {
   Stage,
 } from "@/lib/types";
 import { writeStaging } from "@/lib/pipeline/write-staging";
+import { writeManifest } from "@/lib/pipeline/manifest";
 import { validateWikilinks } from "@/lib/pipeline/wikilink-validator";
 
 export interface ParsedPageInput {
@@ -18,7 +21,10 @@ export interface ParsedPageInput {
 
 export interface BatchHooks {
   parsePdf: (bytes: Uint8Array) => Promise<ParsedPageInput[]>;
-  renderPdfPageToPng: (bytes: Uint8Array, pageNumber: number) => Promise<Uint8Array>;
+  renderPdfPageToPng: (
+    bytes: Uint8Array,
+    pageNumber: number,
+  ) => Promise<Uint8Array>;
   ocrPageImage: (png: Uint8Array) => Promise<string>;
   scanVaultTitles: (vaultPath: string) => Promise<Set<string>>;
   pickGranularity: (args: {
@@ -53,6 +59,7 @@ interface PdfResult {
   pagesWritten: number;
   linksKept: number;
   isFailed: boolean;
+  pages: GeneratedPage[];
 }
 
 function emitStatus(
@@ -88,7 +95,10 @@ async function processPdf(
       emitStatus(bus, batchId, pdf.pdfId, "ocr", 0);
       for (const page of imagePages) {
         try {
-          const png = await hooks.renderPdfPageToPng(pdf.bytes, page.pageNumber);
+          const png = await hooks.renderPdfPageToPng(
+            pdf.bytes,
+            page.pageNumber,
+          );
           page.text = await hooks.ocrPageImage(png);
         } catch (err) {
           console.warn(
@@ -141,6 +151,7 @@ async function processPdf(
         title: p.title,
         body: validatedBody,
         sourcePages: p.sourcePages,
+        aliases: p.aliases,
         links: p.links.filter((l) => knownThisBatch.has(l)),
         sourceFilename: pdf.filename,
       };
@@ -155,11 +166,16 @@ async function processPdf(
     });
 
     emitStatus(bus, batchId, pdf.pdfId, "done", generated.length);
-    return { pagesWritten: generated.length, linksKept, isFailed: false };
+    return {
+      pagesWritten: generated.length,
+      linksKept,
+      isFailed: false,
+      pages: generated,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     emitStatus(bus, batchId, pdf.pdfId, "failed", 0, message);
-    return { pagesWritten: 0, linksKept: 0, isFailed: true };
+    return { pagesWritten: 0, linksKept: 0, isFailed: true, pages: [] };
   }
 }
 
@@ -169,6 +185,7 @@ export async function runBatch(args: RunBatchArgs): Promise<void> {
   let totalPages = 0;
   let totalLinks = 0;
   let totalFailed = 0;
+  const allPages: GeneratedPage[] = [];
 
   const queue = [...args.pdfs];
   async function worker(): Promise<void> {
@@ -179,11 +196,20 @@ export async function runBatch(args: RunBatchArgs): Promise<void> {
       totalPages += result.pagesWritten;
       totalLinks += result.linksKept;
       if (result.isFailed) totalFailed += 1;
+      for (const page of result.pages) allPages.push(page);
     }
   }
   const workerCount = Math.min(args.maxConcurrent, args.pdfs.length);
   const workers = Array.from({ length: workerCount }, () => worker());
   await Promise.all(workers);
+
+  await mkdir(path.join(args.stagingDir, args.batchId), { recursive: true });
+  await writeManifest({
+    stagingDir: args.stagingDir,
+    batchId: args.batchId,
+    granularity: args.granularity,
+    pages: allPages,
+  });
 
   args.bus.publish({
     type: "complete",

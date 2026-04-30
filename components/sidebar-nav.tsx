@@ -9,14 +9,13 @@ interface NavItem {
   index: string;
   label: string;
   href: string;
-  status: "active" | "soon";
 }
 
 const ITEMS: ReadonlyArray<NavItem> = [
-  { index: "01", label: "Generate", href: "/", status: "active" },
-  { index: "02", label: "Graph", href: "/graph", status: "soon" },
-  { index: "03", label: "Plugins", href: "/plugins", status: "soon" },
-  { index: "04", label: "History", href: "/history", status: "soon" },
+  { index: "01", label: "Generate", href: "/" },
+  { index: "02", label: "Graph", href: "/graph" },
+  { index: "03", label: "Plugins", href: "/plugins" },
+  { index: "04", label: "History", href: "/history" },
 ];
 
 export function SidebarNav(): JSX.Element {
@@ -41,9 +40,6 @@ export function SidebarNav(): JSX.Element {
             <span>
               {item.index} · {item.label}
             </span>
-            {item.status === "soon" && !isActive ? (
-              <span className="t-eyebrow text-fg-faint">soon</span>
-            ) : null}
           </Link>
         );
       })}

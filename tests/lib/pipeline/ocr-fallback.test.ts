@@ -1,37 +1,38 @@
 import { describe, it, expect, vi } from "vitest";
 import { ocrPageImage } from "@/lib/pipeline/ocr-fallback";
+import type { LlmClient, VisionRequest } from "@/lib/llm";
+
+type VisionFn = (req: VisionRequest) => Promise<string>;
 
 describe("ocrPageImage", () => {
-  it("calls the supplied client with image content and returns transcribed text", async () => {
-    const create = vi.fn().mockResolvedValue({
-      content: [{ type: "text", text: "transcribed page contents" }],
-    });
-    const client = { messages: { create } };
+  it("forwards the image and returns the trimmed text", async () => {
+    const vision = vi.fn<VisionFn>(async () => "transcribed page contents");
+    const client: LlmClient = { callTool: vi.fn(), vision };
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 
     const text = await ocrPageImage(
-      { client: client as unknown as Parameters<typeof ocrPageImage>[0]["client"], model: "claude-haiku-4-5-20251001" },
+      { client, model: "claude-haiku-4-5-20251001" },
       png,
     );
 
     expect(text).toBe("transcribed page contents");
-    expect(create).toHaveBeenCalledTimes(1);
-    const call = create.mock.calls[0][0];
-    expect(call.model).toBe("claude-haiku-4-5-20251001");
-    const userMsg = call.messages[0];
-    expect(userMsg.role).toBe("user");
-    const imagePart = userMsg.content.find((c: { type: string }) => c.type === "image");
-    expect(imagePart).toBeDefined();
-    expect(imagePart.source.media_type).toBe("image/png");
+    expect(vision).toHaveBeenCalledTimes(1);
+    const arg = vision.mock.calls[0]?.[0];
+    expect(arg).toBeDefined();
+    if (!arg) throw new Error("expected vision to have been invoked");
+    expect(arg.model).toBe("claude-haiku-4-5-20251001");
+    expect(arg.pngBytes).toBe(png);
+    expect(arg.prompt.length).toBeGreaterThan(0);
   });
 
-  it("returns empty string when response has no text block", async () => {
-    const create = vi.fn().mockResolvedValue({ content: [] });
-    const client = { messages: { create } };
-    const png = new Uint8Array([0x89]);
+  it("returns empty string when vision returns empty", async () => {
+    const client: LlmClient = {
+      callTool: vi.fn(),
+      vision: vi.fn<VisionFn>(async () => ""),
+    };
     const text = await ocrPageImage(
-      { client: client as unknown as Parameters<typeof ocrPageImage>[0]["client"], model: "claude-haiku-4-5-20251001" },
-      png,
+      { client, model: "claude-haiku-4-5-20251001" },
+      new Uint8Array([0x89]),
     );
     expect(text).toBe("");
   });

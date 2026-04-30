@@ -43,9 +43,26 @@ next-env.d.ts
 
 # Project-specific
 staging/
-.env.local
-.env*.local
-.next/
-node_modules/
-*.tsbuildinfo
-.DS_Store
+.superpowers/
+.playwright-mcp/
+
+# Local Claude Code settings
+.claude/settings.local.json
+
+# Planning / spec / design docs (kept locally, not merged)
+docs/superpowers/
+
+# Lucidrains side-project (scripts and outputs kept locally only)
+scripts/lucidrains-crawl/
+reports/
+raw/
+logs/
+tmp_crawler/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Archives
+*.zip

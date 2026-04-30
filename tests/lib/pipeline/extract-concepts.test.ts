@@ -1,31 +1,32 @@
 import { describe, it, expect, vi } from "vitest";
 import { extractConcepts } from "@/lib/pipeline/extract-concepts";
+import type { LlmClient, ToolCallRequest } from "@/lib/llm";
+
+type CallToolFn = (req: ToolCallRequest) => Promise<unknown>;
+
+function makeClient(callTool: CallToolFn): LlmClient {
+  return {
+    callTool,
+    vision: vi.fn(async () => ""),
+  };
+}
 
 describe("extractConcepts", () => {
-  it("invokes the model with cached system prompt and returns parsed pages", async () => {
-    const create = vi.fn().mockResolvedValue({
-      content: [
+  it("invokes the model and returns parsed pages", async () => {
+    const callTool = vi.fn<CallToolFn>(async () => ({
+      pages: [
         {
-          type: "tool_use",
-          name: "submit_pages",
-          input: {
-            pages: [
-              {
-                title: "Backpropagation",
-                body: "Body text. See [[Gradient Descent]].",
-                sourcePages: "pp. 1-2",
-                links: ["Gradient Descent"],
-              },
-            ],
-          },
+          title: "Backpropagation",
+          body: "Body text. See [[Gradient Descent]].",
+          sourcePages: "pp. 1-2",
+          aliases: ["Backprop"],
+          links: ["Gradient Descent"],
         },
       ],
-      stop_reason: "tool_use",
-    });
-    const client = { messages: { create } };
+    }));
 
     const result = await extractConcepts({
-      client: client as unknown as Parameters<typeof extractConcepts>[0]["client"],
+      client: makeClient(callTool),
       model: "claude-sonnet-4-6",
       pdfText: "page 1 ... page 2 ...",
       vaultTitles: ["Gradient Descent", "Welcome"],
@@ -34,61 +35,56 @@ describe("extractConcepts", () => {
 
     expect(result.pages).toHaveLength(1);
     expect(result.pages[0].title).toBe("Backpropagation");
-    const call = create.mock.calls[0][0];
-    expect(call.model).toBe("claude-sonnet-4-6");
-    expect(call.tool_choice).toEqual({ type: "tool", name: "submit_pages" });
-    expect(Array.isArray(call.system)).toBe(true);
-    const systemBlock = call.system[0];
-    expect(systemBlock.cache_control).toEqual({ type: "ephemeral" });
+    expect(result.pages[0].aliases).toEqual(["Backprop"]);
+    const arg = callTool.mock.calls[0]?.[0];
+    expect(arg).toBeDefined();
+    if (!arg) throw new Error("expected callTool to have been invoked");
+    expect(arg.model).toBe("claude-sonnet-4-6");
+    expect(arg.tool.name).toBe("submit_pages");
+    expect(arg.cacheableContext).toContain("Gradient Descent");
+    expect(arg.body).toContain("medium");
   });
 
   it("retries once on schema-invalid output, then succeeds", async () => {
-    const create = vi
-      .fn()
+    const callTool = vi
+      .fn<CallToolFn>()
+      .mockResolvedValueOnce({ wrong: "shape" })
       .mockResolvedValueOnce({
-        content: [
-          { type: "tool_use", name: "submit_pages", input: { wrong: "shape" } },
-        ],
-        stop_reason: "tool_use",
-      })
-      .mockResolvedValueOnce({
-        content: [
+        pages: [
           {
-            type: "tool_use",
-            name: "submit_pages",
-            input: {
-              pages: [
-                { title: "T", body: "B", sourcePages: "p.1", links: [] },
-              ],
-            },
+            title: "T",
+            body: "B",
+            sourcePages: "p.1",
+            aliases: [],
+            links: [],
           },
         ],
-        stop_reason: "tool_use",
       });
-    const client = { messages: { create } };
 
     const result = await extractConcepts({
-      client: client as unknown as Parameters<typeof extractConcepts>[0]["client"],
+      client: makeClient(callTool),
       model: "claude-sonnet-4-6",
       pdfText: "x",
       vaultTitles: [],
       granularity: "medium",
     });
 
-    expect(create).toHaveBeenCalledTimes(2);
+    expect(callTool).toHaveBeenCalledTimes(2);
     expect(result.pages).toHaveLength(1);
+    const secondArg = callTool.mock.calls[1]?.[0];
+    expect(secondArg).toBeDefined();
+    if (!secondArg)
+      throw new Error("expected callTool to have been invoked twice");
+    expect(secondArg.systemPrompt).toContain(
+      "Previous attempt failed validation",
+    );
   });
 
   it("throws after a second schema failure", async () => {
-    const bad = {
-      content: [{ type: "tool_use", name: "submit_pages", input: { nope: 1 } }],
-      stop_reason: "tool_use",
-    };
-    const create = vi.fn().mockResolvedValue(bad);
-    const client = { messages: { create } };
+    const callTool = vi.fn<CallToolFn>(async () => ({ nope: 1 }));
     await expect(
       extractConcepts({
-        client: client as unknown as Parameters<typeof extractConcepts>[0]["client"],
+        client: makeClient(callTool),
         model: "claude-sonnet-4-6",
         pdfText: "x",
         vaultTitles: [],

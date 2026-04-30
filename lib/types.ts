@@ -32,6 +32,7 @@ export interface GeneratedPage {
   title: string;
   body: string;
   sourcePages: string;
+  aliases: string[];
   links: string[];
   sourceFilename: string;
 }
@@ -41,8 +42,29 @@ export interface ExtractionResult {
     title: string;
     body: string;
     sourcePages: string;
+    aliases: string[];
     links: string[];
   }>;
+}
+
+export interface ManifestPage {
+  title: string;
+  filename: string;
+  aliases: string[];
+  type: "concept";
+  source: string;
+  sourcePages: string;
+  tags: string[];
+  links: string[];
+  createdAt: string;
+}
+
+export interface BatchManifest {
+  version: "1.0.0";
+  batchId: string;
+  createdAt: string;
+  granularity: Granularity;
+  pages: ManifestPage[];
 }
 
 export interface BatchTotals {
@@ -71,3 +93,12 @@ export type BatchEvent =
       batchId: string;
       totals: BatchTotals;
     };
+
+export interface BatchSummary {
+  batchId: string;
+  createdAt: string;
+  granularity: Granularity;
+  pageCount: number;
+  linkCount: number;
+  sources: string[];
+}

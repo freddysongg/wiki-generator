@@ -20,7 +20,10 @@ Rules:
 - Body is concise Markdown (no top-level # heading; the title is the filename). Use ## subheadings, bullet lists, and inline code as appropriate. Do not echo the entire source — synthesize.
 - Cross-references: include a "## Related" section listing relevant concepts as Obsidian wikilinks ([[Title]]). Prefer titles from the vault-titles list when they match. You may also link to other pages you are creating in this same response.
 - sourcePages: e.g. "pp. 14-22" or "p. 3" — the page range in the PDF where this concept is discussed.
+- aliases: array of alternative names for the concept the user might write instead (abbreviations, plural/singular, hyphenation variants, common misspellings). Empty array if none. The canonical title goes in \`title\`, NOT in aliases.
 - links: array of every wikilink target you used in the body. Must match exact targets in the body.
+
+Every page MUST include an aliases field (use an empty array when there are no alternatives).
 
 Granularity instructions:
 - "coarse": 5-25 pages total. One per major topic. Each page 500-1500 words.
@@ -39,28 +42,31 @@ const ResultSchema = z.object({
       title: z.string().min(1),
       body: z.string().min(1),
       sourcePages: z.string().min(1),
+      aliases: z.array(z.string()).default([]),
       links: z.array(z.string()),
     }),
   ),
 });
 
 const TOOL_NAME = "submit_pages";
-const TOOL_DESCRIPTION =
-  "Return the set of wiki pages extracted from the PDF.";
+const TOOL_DESCRIPTION = "Return the set of wiki pages extracted from the PDF.";
 const TOOL_SCHEMA: Record<string, unknown> = {
   type: "object",
+  additionalProperties: false,
   properties: {
     pages: {
       type: "array",
       items: {
         type: "object",
+        additionalProperties: false,
         properties: {
           title: { type: "string" },
           body: { type: "string" },
           sourcePages: { type: "string" },
+          aliases: { type: "array", items: { type: "string" } },
           links: { type: "array", items: { type: "string" } },
         },
-        required: ["title", "body", "sourcePages", "links"],
+        required: ["title", "body", "sourcePages", "aliases", "links"],
       },
     },
   },

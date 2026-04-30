@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, rm, readdir } from "node:fs/promises";
+import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { runBatch } from "@/lib/pipeline/run-batch";
@@ -39,18 +40,34 @@ describe("runBatch", () => {
         { pdfId: "p2", filename: "b.pdf", bytes: new Uint8Array([4, 5, 6]) },
       ],
       hooks: {
-        parsePdf: vi.fn().mockResolvedValue([{ pageNumber: 1, text: "the page", kind: "text" }]),
+        parsePdf: vi
+          .fn()
+          .mockResolvedValue([
+            { pageNumber: 1, text: "the page", kind: "text" },
+          ]),
         renderPdfPageToPng: vi.fn(),
         ocrPageImage: vi.fn(),
-        scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>(["Existing"])),
+        scanVaultTitles: vi
+          .fn()
+          .mockResolvedValue(new Set<string>(["Existing"])),
         pickGranularity: vi.fn().mockResolvedValue("medium"),
         extractConcepts: vi.fn().mockResolvedValue({
-          pages: [{ title: "Concept", body: "Body [[Existing]]", sourcePages: "p.1", links: ["Existing"] }],
+          pages: [
+            {
+              title: "Concept",
+              body: "Body [[Existing]]",
+              sourcePages: "p.1",
+              aliases: [],
+              links: ["Existing"],
+            },
+          ],
         }),
       },
     });
 
-    const stages = events.filter((e) => e.type === "status").map((e) => (e.type === "status" ? e.stage : ""));
+    const stages = events
+      .filter((e) => e.type === "status")
+      .map((e) => (e.type === "status" ? e.stage : ""));
     expect(stages).toContain("parsing");
     expect(stages).toContain("extracting");
     expect(stages).toContain("writing");
@@ -60,6 +77,47 @@ describe("runBatch", () => {
 
     const filesP1 = await readdir(path.join(staging, "b1"));
     expect(filesP1).toContain("Concept.md");
+    expect(filesP1).toContain("manifest.json");
+    const manifestRaw = await readFile(
+      path.join(staging, "b1", "manifest.json"),
+      "utf8",
+    );
+    const manifest = JSON.parse(manifestRaw) as {
+      version: string;
+      pages: Array<{ title: string; filename: string }>;
+    };
+    expect(manifest.version).toBe("1.0.0");
+    expect(manifest.pages.map((p) => p.title)).toContain("Concept");
+  });
+
+  it("emits a manifest.json even when every PDF fails", async () => {
+    const bus = new EventBus();
+    await runBatch({
+      bus,
+      batchId: "ballfail",
+      granularity: "medium",
+      stagingDir: staging,
+      vaultPath: vault,
+      maxConcurrent: 1,
+      pdfs: [{ pdfId: "p1", filename: "a.pdf", bytes: new Uint8Array([1]) }],
+      hooks: {
+        parsePdf: vi.fn().mockRejectedValue(new Error("boom")),
+        renderPdfPageToPng: vi.fn(),
+        ocrPageImage: vi.fn(),
+        scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>()),
+        pickGranularity: vi.fn().mockResolvedValue("medium"),
+        extractConcepts: vi.fn(),
+      },
+    });
+    expect(existsSync(path.join(staging, "ballfail", "manifest.json"))).toBe(
+      true,
+    );
+    const manifestRaw = await readFile(
+      path.join(staging, "ballfail", "manifest.json"),
+      "utf8",
+    );
+    const manifest = JSON.parse(manifestRaw) as { pages: unknown[] };
+    expect(manifest.pages).toEqual([]);
   });
 
   it("triggers ocr fallback for image pages", async () => {
@@ -74,13 +132,23 @@ describe("runBatch", () => {
       maxConcurrent: 1,
       pdfs: [{ pdfId: "p1", filename: "a.pdf", bytes: new Uint8Array([1]) }],
       hooks: {
-        parsePdf: vi.fn().mockResolvedValue([{ pageNumber: 1, text: "", kind: "image" }]),
+        parsePdf: vi
+          .fn()
+          .mockResolvedValue([{ pageNumber: 1, text: "", kind: "image" }]),
         renderPdfPageToPng: vi.fn().mockResolvedValue(new Uint8Array([0x89])),
         ocrPageImage: ocr,
         scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>()),
         pickGranularity: vi.fn().mockResolvedValue("medium"),
         extractConcepts: vi.fn().mockResolvedValue({
-          pages: [{ title: "X", body: "B", sourcePages: "p.1", links: [] }],
+          pages: [
+            {
+              title: "X",
+              body: "B",
+              sourcePages: "p.1",
+              aliases: [],
+              links: [],
+            },
+          ],
         }),
       },
     });
@@ -104,22 +172,34 @@ describe("runBatch", () => {
         { pdfId: "p2", filename: "bad.pdf", bytes: new Uint8Array([2]) },
       ],
       hooks: {
-        parsePdf: vi.fn().mockImplementation((bytes: Uint8Array) =>
-          bytes[0] === 2
-            ? Promise.reject(new Error("boom"))
-            : Promise.resolve([{ pageNumber: 1, text: "ok", kind: "text" }]),
-        ),
+        parsePdf: vi
+          .fn()
+          .mockImplementation((bytes: Uint8Array) =>
+            bytes[0] === 2
+              ? Promise.reject(new Error("boom"))
+              : Promise.resolve([{ pageNumber: 1, text: "ok", kind: "text" }]),
+          ),
         renderPdfPageToPng: vi.fn(),
         ocrPageImage: vi.fn(),
         scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>()),
         pickGranularity: vi.fn().mockResolvedValue("medium"),
         extractConcepts: vi.fn().mockResolvedValue({
-          pages: [{ title: "T", body: "B", sourcePages: "p.1", links: [] }],
+          pages: [
+            {
+              title: "T",
+              body: "B",
+              sourcePages: "p.1",
+              aliases: [],
+              links: [],
+            },
+          ],
         }),
       },
     });
 
-    const failed = events.find((e) => e.type === "status" && e.stage === "failed");
+    const failed = events.find(
+      (e) => e.type === "status" && e.stage === "failed",
+    );
     const done = events.find((e) => e.type === "status" && e.stage === "done");
     expect(failed).toBeDefined();
     expect(done).toBeDefined();
@@ -150,7 +230,15 @@ describe("runBatch", () => {
         scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>()),
         pickGranularity: vi.fn().mockResolvedValue("medium"),
         extractConcepts: vi.fn().mockResolvedValue({
-          pages: [{ title: "T", body: "B", sourcePages: "p.1-2", links: [] }],
+          pages: [
+            {
+              title: "T",
+              body: "B",
+              sourcePages: "p.1-2",
+              aliases: [],
+              links: [],
+            },
+          ],
         }),
       },
     });
@@ -162,7 +250,9 @@ describe("runBatch", () => {
     const bus = new EventBus();
     const picker = vi.fn().mockResolvedValue("fine");
     const extract = vi.fn().mockResolvedValue({
-      pages: [{ title: "T", body: "B", sourcePages: "p.1", links: [] }],
+      pages: [
+        { title: "T", body: "B", sourcePages: "p.1", aliases: [], links: [] },
+      ],
     });
 
     await runBatch({
@@ -179,7 +269,9 @@ describe("runBatch", () => {
       hooks: {
         parsePdf: vi
           .fn()
-          .mockResolvedValue([{ pageNumber: 1, text: "the page", kind: "text" }]),
+          .mockResolvedValue([
+            { pageNumber: 1, text: "the page", kind: "text" },
+          ]),
         renderPdfPageToPng: vi.fn(),
         ocrPageImage: vi.fn(),
         scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>()),
@@ -214,7 +306,15 @@ describe("runBatch", () => {
         scanVaultTitles: vi.fn().mockResolvedValue(new Set<string>()),
         pickGranularity: picker,
         extractConcepts: vi.fn().mockResolvedValue({
-          pages: [{ title: "T", body: "B", sourcePages: "p.1", links: [] }],
+          pages: [
+            {
+              title: "T",
+              body: "B",
+              sourcePages: "p.1",
+              aliases: [],
+              links: [],
+            },
+          ],
         }),
       },
     });
@@ -227,7 +327,9 @@ describe("runBatch", () => {
     bus.subscribe("bfail", (e) => events.push(e));
     const picker = vi.fn().mockRejectedValue(new Error("classifier down"));
     const extract = vi.fn().mockResolvedValue({
-      pages: [{ title: "T", body: "B", sourcePages: "p.1", links: [] }],
+      pages: [
+        { title: "T", body: "B", sourcePages: "p.1", aliases: [], links: [] },
+      ],
     });
 
     await runBatch({

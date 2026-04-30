@@ -1,5 +1,5 @@
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import { createCanvas } from "canvas";
+import { getPdfjs } from "@/lib/pipeline/pdfjs-runtime";
 
 export interface RenderOptions {
   maxWidth?: number;
@@ -14,6 +14,7 @@ export async function renderPdfPageToPng(
   opts: RenderOptions = {},
 ): Promise<Uint8Array> {
   const maxWidth = opts.maxWidth ?? DEFAULT_MAX_WIDTH;
+  const pdfjsLib = getPdfjs();
   const loadingTask = pdfjsLib.getDocument({ data, useSystemFonts: true });
   const doc = await loadingTask.promise;
   try {

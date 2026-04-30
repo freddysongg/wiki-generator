@@ -1,7 +1,7 @@
-import type Anthropic from "@anthropic-ai/sdk";
+import type { LlmClient } from "@/lib/llm";
 
 export interface OcrDeps {
-  client: Pick<Anthropic, "messages">;
+  client: LlmClient;
   model: string;
 }
 
@@ -15,28 +15,10 @@ export async function ocrPageImage(
   deps: OcrDeps,
   pngBytes: Uint8Array,
 ): Promise<string> {
-  const base64 = Buffer.from(pngBytes).toString("base64");
-  const response = await deps.client.messages.create({
+  return deps.client.vision({
     model: deps.model,
-    max_tokens: MAX_TOKENS,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: "image/png",
-              data: base64,
-            },
-          },
-          { type: "text", text: TRANSCRIBE_PROMPT },
-        ],
-      },
-    ],
+    maxTokens: MAX_TOKENS,
+    prompt: TRANSCRIBE_PROMPT,
+    pngBytes,
   });
-  const textBlock = response.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") return "";
-  return textBlock.text.trim();
 }

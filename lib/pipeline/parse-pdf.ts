@@ -1,4 +1,4 @@
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import { getPdfjs } from "@/lib/pipeline/pdfjs-runtime";
 
 export interface ParsedPage {
   pageNumber: number;
@@ -17,6 +17,7 @@ export async function parsePdf(
   opts: ParseOptions = {},
 ): Promise<ParsedPage[]> {
   const threshold = opts.textThreshold ?? DEFAULT_TEXT_THRESHOLD;
+  const pdfjsLib = getPdfjs();
 
   const loadingTask = pdfjsLib.getDocument({ data, useSystemFonts: true });
   const doc = await loadingTask.promise;
