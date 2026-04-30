@@ -30,6 +30,7 @@ const TOOL_DESCRIPTION =
   "Return the wiki granularity that best fits this document.";
 const TOOL_SCHEMA: Record<string, unknown> = {
   type: "object",
+  additionalProperties: false,
   properties: {
     choice: { type: "string", enum: ["coarse", "medium", "fine"] },
     reason: { type: "string" },
