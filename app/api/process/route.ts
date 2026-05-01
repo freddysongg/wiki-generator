@@ -38,17 +38,31 @@ export async function POST(req: Request): Promise<Response> {
     return NextResponse.json({ error: "no files" }, { status: 400 });
   }
 
+  for (const file of fileEntries) {
+    if (
+      file.name.includes("/") ||
+      file.name.includes("\\") ||
+      file.name.includes("\0")
+    ) {
+      return NextResponse.json({ error: "invalid filename" }, { status: 400 });
+    }
+  }
+
   const batchId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
   const stagingDir =
     process.env.WIKI_STAGING_DIR ?? path.join(process.cwd(), "staging");
 
   const uploadDir = path.join(tmpdir(), "wiki-generator-uploads", batchId);
+  const sourcesDir = path.join(stagingDir, batchId, "sources");
   await mkdir(uploadDir, { recursive: true });
+  await mkdir(sourcesDir, { recursive: true });
   const pdfs = await Promise.all(
     fileEntries.map(async (file) => {
       const pdfId = randomUUID();
       const filePath = path.join(uploadDir, `${pdfId}.pdf`);
-      await writeFile(filePath, new Uint8Array(await file.arrayBuffer()));
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      await writeFile(filePath, bytes);
+      await writeFile(path.join(sourcesDir, file.name), bytes);
       return { pdfId, filename: file.name, filePath };
     }),
   );

@@ -58,6 +58,7 @@ reports/
 raw/
 logs/
 tmp_crawler/
+retry-batch/
 
 # Python
 __pycache__/

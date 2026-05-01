@@ -20,16 +20,60 @@ const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
 
 const GRAPH_HEIGHT_PX = 480;
 const GRAPH_FALLBACK_WIDTH_PX = 720;
-const NODE_RADIUS_PX = 5;
-const NODE_HOVER_RADIUS_PX = 7;
+const NODE_RADIUS_MIN_PX = 3;
+const NODE_RADIUS_MAX_PX = 14;
+const NODE_RADIUS_BASE_PX = 3;
+const NODE_RADIUS_DEGREE_FACTOR = 1.2;
+const NODE_HOVER_SCALE = 1.4;
 const NODE_HIT_RADIUS_PX = 14;
 const NODE_LABEL_GAP_PX = 6;
 const LABEL_FONT_PX = 11;
 const LABEL_TRUNCATE_CHARS = 22;
+const LABEL_VISIBLE_ZOOM = 1.5;
+const LABEL_FONT_FAMILY = "Inter, system-ui, sans-serif";
 const NODE_REL_SIZE = 8;
-const CHARGE_STRENGTH = -260;
-const LINK_DISTANCE = 90;
-const COOLDOWN_TICKS = 240;
+const LINK_ALPHA = 0.18;
+const LINK_WIDTH = 0.5;
+
+const FORCE_NODE_COUNT_MIN = 100;
+const FORCE_NODE_COUNT_MAX = 1500;
+const CHARGE_STRENGTH_MIN = -260;
+const CHARGE_STRENGTH_MAX = -1200;
+const LINK_DISTANCE_MIN = 90;
+const LINK_DISTANCE_MAX = 220;
+const COOLDOWN_TICKS_MIN = 240;
+const COOLDOWN_TICKS_MAX = 800;
+
+interface ForceParams {
+  chargeStrength: number;
+  linkDistance: number;
+  cooldownTicks: number;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+
+function computeForceParams(nodeCount: number): ForceParams {
+  const span = FORCE_NODE_COUNT_MAX - FORCE_NODE_COUNT_MIN;
+  const ratio = clamp((nodeCount - FORCE_NODE_COUNT_MIN) / span, 0, 1);
+  const chargeStrength =
+    CHARGE_STRENGTH_MIN + (CHARGE_STRENGTH_MAX - CHARGE_STRENGTH_MIN) * ratio;
+  const linkDistance =
+    LINK_DISTANCE_MIN + (LINK_DISTANCE_MAX - LINK_DISTANCE_MIN) * ratio;
+  const cooldownTicks = Math.round(
+    COOLDOWN_TICKS_MIN + (COOLDOWN_TICKS_MAX - COOLDOWN_TICKS_MIN) * ratio,
+  );
+  return { chargeStrength, linkDistance, cooldownTicks };
+}
+
+function nodeRadiusForDegree(degree: number): number {
+  const raw =
+    NODE_RADIUS_BASE_PX + Math.sqrt(degree) * NODE_RADIUS_DEGREE_FACTOR;
+  return clamp(raw, NODE_RADIUS_MIN_PX, NODE_RADIUS_MAX_PX);
+}
 
 interface GraphPreviewProps {
   batchId: string;
@@ -64,6 +108,7 @@ interface BuiltGraph {
   externalLinkCount: number;
   outgoingByTitle: Map<string, number>;
   incomingByTitle: Map<string, number>;
+  degreeByTitle: Map<string, number>;
   pageByTitle: Map<string, ManifestPage>;
 }
 
@@ -124,11 +169,19 @@ function buildGraph(manifest: BatchManifest): BuiltGraph {
     }
   }
 
+  const degreeByTitle = new Map<string, number>();
+  for (const page of manifest.pages) {
+    const outgoing = outgoingByTitle.get(page.title) ?? 0;
+    const incoming = incomingByTitle.get(page.title) ?? 0;
+    degreeByTitle.set(page.title, outgoing + incoming);
+  }
+
   return {
     data: { nodes, links },
     externalLinkCount,
     outgoingByTitle,
     incomingByTitle,
+    degreeByTitle,
     pageByTitle,
   };
 }
@@ -298,16 +351,21 @@ export function GraphPreview(props: GraphPreviewProps): JSX.Element {
     return buildGraph(state.manifest);
   }, [state]);
 
+  const forceParams = useMemo<ForceParams>(
+    () => computeForceParams(built?.data.nodes.length ?? 0),
+    [built],
+  );
+
   useEffect(() => {
     if (!built) return;
     const handle = graphRef.current;
     if (!handle || typeof handle.d3Force !== "function") return;
     const charge = handle.d3Force("charge") as ForceSimulation | undefined;
     const link = handle.d3Force("link") as ForceSimulation | undefined;
-    charge?.strength?.(CHARGE_STRENGTH);
-    link?.distance?.(LINK_DISTANCE);
+    charge?.strength?.(forceParams.chargeStrength);
+    link?.distance?.(forceParams.linkDistance);
     handle.d3ReheatSimulation?.();
-  }, [built]);
+  }, [built, forceParams]);
 
   const handleEngineStop = useCallback((): void => {
     const handle = graphRef.current;
@@ -338,21 +396,26 @@ export function GraphPreview(props: GraphPreviewProps): JSX.Element {
       ctx: CanvasRenderingContext2D,
       globalScale: number,
     ): void => {
-      if (!theme) return;
+      if (!theme || !built) return;
       if (typeof node.x !== "number" || typeof node.y !== "number") return;
       if (typeof node.id !== "string" || typeof node.label !== "string") {
         return;
       }
       const isAccented = node.id === hoveredTitle || node.id === selectedTitle;
-      const radiusWorld =
-        (isAccented ? NODE_HOVER_RADIUS_PX : NODE_RADIUS_PX) / globalScale;
+      const degree = built.degreeByTitle.get(node.id) ?? 0;
+      const baseRadiusPx = nodeRadiusForDegree(degree);
+      const radiusPx = isAccented ? baseRadiusPx * NODE_HOVER_SCALE : baseRadiusPx;
+      const radiusWorld = radiusPx / globalScale;
       ctx.beginPath();
       ctx.arc(node.x, node.y, radiusWorld, 0, 2 * Math.PI);
       ctx.fillStyle = isAccented ? theme.terracotta : theme.ink;
       ctx.fill();
 
+      const shouldDrawLabel = isAccented || globalScale >= LABEL_VISIBLE_ZOOM;
+      if (!shouldDrawLabel) return;
+
       const fontWorld = LABEL_FONT_PX / globalScale;
-      ctx.font = `${fontWorld}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+      ctx.font = `${fontWorld}px ${LABEL_FONT_FAMILY}`;
       ctx.fillStyle = isAccented ? theme.terracotta : theme.ink;
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
@@ -362,7 +425,38 @@ export function GraphPreview(props: GraphPreviewProps): JSX.Element {
         node.y + radiusWorld + NODE_LABEL_GAP_PX / globalScale,
       );
     },
-    [theme, hoveredTitle, selectedTitle],
+    [theme, hoveredTitle, selectedTitle, built],
+  );
+
+  const drawLink = useCallback(
+    (
+      link: { source?: unknown; target?: unknown },
+      ctx: CanvasRenderingContext2D,
+    ): void => {
+      if (!theme) return;
+      const source = link.source as { x?: number; y?: number } | undefined;
+      const target = link.target as { x?: number; y?: number } | undefined;
+      if (
+        !source ||
+        !target ||
+        typeof source.x !== "number" ||
+        typeof source.y !== "number" ||
+        typeof target.x !== "number" ||
+        typeof target.y !== "number"
+      ) {
+        return;
+      }
+      const previousAlpha = ctx.globalAlpha;
+      ctx.globalAlpha = LINK_ALPHA;
+      ctx.strokeStyle = theme.lineSoft;
+      ctx.lineWidth = LINK_WIDTH;
+      ctx.beginPath();
+      ctx.moveTo(source.x, source.y);
+      ctx.lineTo(target.x, target.y);
+      ctx.stroke();
+      ctx.globalAlpha = previousAlpha;
+    },
+    [theme],
   );
 
   const retry = useCallback((): void => {
@@ -431,10 +525,11 @@ export function GraphPreview(props: GraphPreviewProps): JSX.Element {
             backgroundColor={theme.paper2}
             nodeId="id"
             nodeRelSize={NODE_REL_SIZE}
-            cooldownTicks={COOLDOWN_TICKS}
+            cooldownTicks={forceParams.cooldownTicks}
             onEngineStop={handleEngineStop}
             linkColor={() => theme.lineSoft}
-            linkWidth={1}
+            linkWidth={LINK_WIDTH}
+            linkCanvasObject={drawLink}
             nodeCanvasObject={drawNode}
             nodePointerAreaPaint={(
               node: GraphNode,

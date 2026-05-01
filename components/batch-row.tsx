@@ -1,14 +1,19 @@
 "use client";
 
-import type { JSX } from "react";
+import { useState, type JSX } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { PdfViewerDialog } from "@/components/pdf-viewer-dialog";
 import type { BatchSummary } from "@/lib/types";
 
 interface Props {
   batch: BatchSummary;
   isImporting: boolean;
   onImport: (batchId: string) => void;
+}
+
+interface ViewerState {
+  filename: string;
 }
 
 const DATE_FORMAT = new Intl.DateTimeFormat("en-US", {
@@ -28,6 +33,7 @@ function formatDate(iso: string): string {
 }
 
 export function BatchRow({ batch, isImporting, onImport }: Props): JSX.Element {
+  const [viewer, setViewer] = useState<ViewerState | null>(null);
   const visibleSources = batch.sources.slice(0, MAX_VISIBLE_SOURCES);
   const hiddenCount = batch.sources.length - visibleSources.length;
 
@@ -45,10 +51,18 @@ export function BatchRow({ batch, isImporting, onImport }: Props): JSX.Element {
           {visibleSources.map((source) => (
             <span
               key={source}
-              className="inline-flex items-center px-2 py-0.5 t-meta text-fg-mute border border-rule"
+              className="inline-flex items-center gap-1 px-2 py-0.5 t-meta text-fg-mute border border-rule"
               title={source}
             >
-              {source}
+              <span>{source}</span>
+              <button
+                type="button"
+                aria-label={`View source PDF ${source}`}
+                className="t-meta text-fg-mute hover:text-fg underline underline-offset-2"
+                onClick={() => setViewer({ filename: source })}
+              >
+                PDF
+              </button>
             </span>
           ))}
           {hiddenCount > 0 ? (
@@ -76,6 +90,15 @@ export function BatchRow({ batch, isImporting, onImport }: Props): JSX.Element {
           {isImporting ? "Importing…" : "Import"}
         </Button>
       </div>
+
+      <PdfViewerDialog
+        open={viewer !== null}
+        onOpenChange={(open) => {
+          if (!open) setViewer(null);
+        }}
+        batchId={viewer ? batch.batchId : null}
+        filename={viewer ? viewer.filename : null}
+      />
     </li>
   );
 }
