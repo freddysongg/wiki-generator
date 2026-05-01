@@ -517,6 +517,7 @@ describe("runBatch", () => {
 
     const parsePdf = vi.fn().mockImplementation(async (bytes: Uint8Array) => {
       expect(bytes).toBeInstanceOf(Uint8Array);
+      expect(Buffer.isBuffer(bytes)).toBe(false);
       expect(bytes.length).toBe(2);
       return [{ pageNumber: 1, text: "ok", kind: "text" as const }];
     });

@@ -116,6 +116,11 @@ async function withLlmSlot<T>(
   }
 }
 
+async function readFileAsUint8Array(filePath: string): Promise<Uint8Array> {
+  const buf = await readFile(filePath);
+  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+}
+
 function emitStatus(
   bus: EventBus,
   batchId: string,
@@ -144,14 +149,18 @@ async function processPdf(
   const { bus, batchId, granularity, stagingDir, hooks } = args;
   emitStatus(bus, batchId, pdf.pdfId, "parsing", 0);
   try {
-    let parseBytes: Uint8Array | null = await readFile(pdf.filePath);
+    let parseBytes: Uint8Array | null = await readFileAsUint8Array(
+      pdf.filePath,
+    );
     const parsed = await hooks.parsePdf(parseBytes);
     parseBytes = null;
 
     const imagePages = parsed.filter((p) => p.kind === "image");
     if (imagePages.length > 0) {
       emitStatus(bus, batchId, pdf.pdfId, "ocr", 0);
-      let ocrBytes: Uint8Array | null = await readFile(pdf.filePath);
+      let ocrBytes: Uint8Array | null = await readFileAsUint8Array(
+        pdf.filePath,
+      );
       try {
         for (const page of imagePages) {
           try {
