@@ -27,6 +27,7 @@ function parseFirstPageNumber(sourcePages: string): number | undefined {
 const WIKILINK_HREF_PREFIX = "#wiki/";
 const WIKILINK_BROKEN_HREF = "#wiki-broken";
 const WIKILINK_PATTERN = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+const SUMMARY_PAGE_LIMIT = 500;
 
 interface PageRef {
   filename: string;
@@ -81,6 +82,81 @@ interface Props {
   title: string | null;
   source: string | null;
   sourcePages: string | null;
+}
+
+interface SummaryPagePayload {
+  batchId: string;
+  total: number;
+  offset: number;
+  limit: number;
+  pages: Array<{
+    title?: unknown;
+    filename?: unknown;
+    source?: unknown;
+    sourcePages?: unknown;
+  }>;
+}
+
+function coercePagesPayload(payload: SummaryPagePayload): ManifestPageEntry[] {
+  if (!Array.isArray(payload.pages)) return [];
+  const result: ManifestPageEntry[] = [];
+  for (const entry of payload.pages) {
+    if (typeof entry.title !== "string") continue;
+    if (typeof entry.filename !== "string") continue;
+    result.push({
+      title: entry.title,
+      filename: entry.filename,
+      source: typeof entry.source === "string" ? entry.source : "",
+      sourcePages:
+        typeof entry.sourcePages === "string" ? entry.sourcePages : "",
+    });
+  }
+  return result;
+}
+
+async function fetchSummaryChunk(
+  batchId: string,
+  offset: number,
+  limit: number,
+  signal: AbortSignal,
+): Promise<SummaryPagePayload> {
+  const response = await fetch(
+    `/api/manifest/${encodeURIComponent(batchId)}?summary=true&offset=${offset}&limit=${limit}`,
+    { signal },
+  );
+  if (!response.ok) {
+    throw new Error(`manifest fetch failed: ${response.status}`);
+  }
+  return (await response.json()) as SummaryPagePayload;
+}
+
+async function fetchAllSummaryPages(
+  batchId: string,
+  signal: AbortSignal,
+): Promise<ManifestPageEntry[]> {
+  const head = await fetchSummaryChunk(
+    batchId,
+    0,
+    SUMMARY_PAGE_LIMIT,
+    signal,
+  );
+  if (head.total <= head.pages.length) {
+    return coercePagesPayload(head);
+  }
+  const offsets: number[] = [];
+  for (let n = SUMMARY_PAGE_LIMIT; n < head.total; n += SUMMARY_PAGE_LIMIT) {
+    offsets.push(n);
+  }
+  const rest = await Promise.all(
+    offsets.map((offset) =>
+      fetchSummaryChunk(batchId, offset, SUMMARY_PAGE_LIMIT, signal),
+    ),
+  );
+  const result = coercePagesPayload(head);
+  for (const chunk of rest) {
+    for (const page of coercePagesPayload(chunk)) result.push(page);
+  }
+  return result;
 }
 
 function buildTitleIndex(pages: ManifestPageEntry[]): Map<string, ManifestPageEntry> {
@@ -238,52 +314,10 @@ export function PagePreviewDialog({
     setManifestState({ status: "loading" });
     void (async (): Promise<void> => {
       try {
-        const response = await fetch(
-          `/api/manifest/${encodeURIComponent(batchId)}`,
-          { signal: controller.signal },
-        );
-        if (!response.ok) {
-          console.error(
-            `[page-preview] manifest fetch failed: ${response.status}`,
-          );
-          if (!controller.signal.aborted) {
-            setManifestState({ status: "error" });
-          }
-          return;
-        }
-        const parsed = (await response.json()) as {
-          pages?: Array<{
-            title?: unknown;
-            filename?: unknown;
-            source?: unknown;
-            sourcePages?: unknown;
-          }>;
-        };
-        const pages: ManifestPageEntry[] = Array.isArray(parsed.pages)
-          ? parsed.pages
-              .filter(
-                (
-                  entry,
-                ): entry is {
-                  title: string;
-                  filename: string;
-                  source?: unknown;
-                  sourcePages?: unknown;
-                } =>
-                  typeof entry.title === "string" &&
-                  typeof entry.filename === "string",
-              )
-              .map((entry) => ({
-                title: entry.title,
-                filename: entry.filename,
-                source: typeof entry.source === "string" ? entry.source : "",
-                sourcePages:
-                  typeof entry.sourcePages === "string" ? entry.sourcePages : "",
-              }))
-          : [];
-        manifestCacheRef.current.set(batchId, pages);
+        const allPages = await fetchAllSummaryPages(batchId, controller.signal);
+        manifestCacheRef.current.set(batchId, allPages);
         if (!controller.signal.aborted) {
-          setManifestState({ status: "ready", pages });
+          setManifestState({ status: "ready", pages: allPages });
         }
       } catch (err) {
         if ((err as { name?: string }).name === "AbortError") return;
@@ -383,8 +417,8 @@ export function PagePreviewDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl border border-rule bg-bg text-fg">
-        <DialogHeader>
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col gap-3 border border-rule bg-bg text-fg">
+          <DialogHeader className="shrink-0">
           {canGoBack ? (
             <button
               type="button"
@@ -412,7 +446,7 @@ export function PagePreviewDialog({
             ) : null}
           </div>
         </DialogHeader>
-        <div className="page-preview-body">
+        <div className="page-preview-body flex-1 min-h-0 overflow-y-auto pr-1">
           {bodyState.status === "loading" ? (
             <p className="t-meta text-fg-mute">Loading…</p>
           ) : null}
@@ -533,7 +567,7 @@ export function PagePreviewDialog({
             </ReactMarkdown>
           ) : null}
         </div>
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>

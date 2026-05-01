@@ -79,5 +79,7 @@ export async function GET(): Promise<Response> {
   const filtered = summaries.filter((s): s is BatchSummary => s !== null);
   filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
-  return NextResponse.json(filtered);
+  return NextResponse.json(filtered, {
+    headers: { "cache-control": "public, max-age=30, must-revalidate" },
+  });
 }

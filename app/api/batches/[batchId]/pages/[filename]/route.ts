@@ -80,6 +80,9 @@ export async function GET(
   const cleaned = stripPageChrome(pageRaw);
   return new Response(cleaned, {
     status: 200,
-    headers: { "content-type": "text/markdown; charset=utf-8" },
+    headers: {
+      "content-type": "text/markdown; charset=utf-8",
+      "cache-control": "public, max-age=31536000, immutable",
+    },
   });
 }

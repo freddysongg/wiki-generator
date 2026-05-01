@@ -55,4 +55,76 @@ describe("GET /api/manifest/[batchId]", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it("returns paginated summary pages with summary=true", async () => {
+    await mkdir(path.join(staging, "bp"));
+    const pages = Array.from({ length: 250 }, (_, i) => ({
+      title: `Concept ${i}`,
+      filename: `Concept-${i}.md`,
+      aliases: [`c${i}`],
+      type: "concept",
+      source: "x.pdf",
+      sourcePages: `p. ${i}`,
+      tags: [],
+      links: ["something-else", "another-thing"],
+      createdAt: "2026-04-27T00:00:00.000Z",
+    }));
+    const manifest = {
+      version: "1.0.0",
+      batchId: "bp",
+      createdAt: "2026-04-27T00:00:00.000Z",
+      granularity: "medium",
+      pages,
+    };
+    await writeFile(
+      path.join(staging, "bp", "manifest.json"),
+      JSON.stringify(manifest),
+    );
+    const { GET } = await import("@/app/api/manifest/[batchId]/route");
+    const req = new Request(
+      "http://localhost/api/manifest/bp?summary=true&offset=100&limit=50",
+    );
+    const res = await GET(req, { params: Promise.resolve({ batchId: "bp" }) });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toContain("max-age=43200");
+    const json = (await res.json()) as {
+      total: number;
+      offset: number;
+      limit: number;
+      pages: Array<{ title: string; filename: string; aliases: string[] }>;
+    };
+    expect(json.total).toBe(250);
+    expect(json.offset).toBe(100);
+    expect(json.limit).toBe(50);
+    expect(json.pages).toHaveLength(50);
+    expect(json.pages[0]).toMatchObject({
+      title: "Concept 100",
+      filename: "Concept-100.md",
+      aliases: ["c100"],
+    });
+    expect(json.pages[0]).not.toHaveProperty("links");
+    expect(json.pages[0]).not.toHaveProperty("tags");
+  });
+
+  it("returns full manifest with cache header when no summary param", async () => {
+    await mkdir(path.join(staging, "bf"));
+    const manifest = {
+      version: "1.0.0",
+      batchId: "bf",
+      createdAt: "2026-04-27T00:00:00.000Z",
+      granularity: "medium",
+      pages: [],
+    };
+    await writeFile(
+      path.join(staging, "bf", "manifest.json"),
+      JSON.stringify(manifest),
+    );
+    const { GET } = await import("@/app/api/manifest/[batchId]/route");
+    const req = new Request("http://localhost/api/manifest/bf");
+    const res = await GET(req, { params: Promise.resolve({ batchId: "bf" }) });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toContain("max-age=43200");
+    const json = (await res.json()) as { version: string };
+    expect(json.version).toBe("1.0.0");
+  });
 });

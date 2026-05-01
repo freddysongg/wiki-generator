@@ -78,6 +78,9 @@ export async function GET(
 
   return new Response(new Uint8Array(bytes), {
     status: 200,
-    headers: { "content-type": "application/pdf" },
+    headers: {
+      "content-type": "application/pdf",
+      "cache-control": "public, max-age=31536000, immutable",
+    },
   });
 }

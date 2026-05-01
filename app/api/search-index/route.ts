@@ -100,5 +100,7 @@ export async function GET(): Promise<Response> {
     records.push(record);
   }
   const body: SearchIndexResponse = { records };
-  return NextResponse.json(body);
+  return NextResponse.json(body, {
+    headers: { "cache-control": "public, max-age=30, must-revalidate" },
+  });
 }

@@ -18,8 +18,15 @@ function makeFetchMock(args: {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/api/manifest/")) {
+      const pages = args.manifestPages ?? [];
       return new Response(
-        JSON.stringify({ pages: args.manifestPages ?? [] }),
+        JSON.stringify({
+          batchId: "b1",
+          total: pages.length,
+          offset: 0,
+          limit: 500,
+          pages,
+        }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     }
@@ -67,7 +74,16 @@ describe("PagePreviewDialog", () => {
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.includes("/api/manifest/")) {
-        return new Response(JSON.stringify({ pages: [] }), { status: 200 });
+        return new Response(
+          JSON.stringify({
+            batchId: "b1",
+            total: 0,
+            offset: 0,
+            limit: 500,
+            pages: [],
+          }),
+          { status: 200 },
+        );
       }
       return new Response("not found", { status: 404 });
     }) as unknown as typeof fetch;
