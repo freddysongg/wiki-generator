@@ -19,6 +19,7 @@ const RawSchema = z.object({
   ocrModel: z.string().min(1).optional(),
   granularityPickerModel: z.string().min(1).optional(),
   maxConcurrentPdfs: z.coerce.number().int().positive().default(3),
+  maxConcurrentLlm: z.coerce.number().int().positive().default(6),
   ocrTextThreshold: z.coerce.number().int().positive().default(100),
 });
 
@@ -44,6 +45,7 @@ export interface AppConfig {
   ocrModel: string;
   granularityPickerModel: string;
   maxConcurrentPdfs: number;
+  maxConcurrentLlm: number;
   ocrTextThreshold: number;
 }
 
@@ -58,6 +60,7 @@ export function loadConfig(): AppConfig {
     ocrModel: process.env.OCR_MODEL,
     granularityPickerModel: process.env.GRANULARITY_PICKER_MODEL,
     maxConcurrentPdfs: process.env.MAX_CONCURRENT_PDFS,
+    maxConcurrentLlm: process.env.MAX_CONCURRENT_LLM,
     ocrTextThreshold: process.env.OCR_TEXT_THRESHOLD,
   };
 
@@ -94,6 +97,7 @@ export function loadConfig(): AppConfig {
     granularityPickerModel:
       data.granularityPickerModel ?? defaults.granularityPicker,
     maxConcurrentPdfs: data.maxConcurrentPdfs,
+    maxConcurrentLlm: data.maxConcurrentLlm,
     ocrTextThreshold: data.ocrTextThreshold,
   };
 }

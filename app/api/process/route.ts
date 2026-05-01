@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -40,12 +42,15 @@ export async function POST(req: Request): Promise<Response> {
   const stagingDir =
     process.env.WIKI_STAGING_DIR ?? path.join(process.cwd(), "staging");
 
+  const uploadDir = path.join(tmpdir(), "wiki-generator-uploads", batchId);
+  await mkdir(uploadDir, { recursive: true });
   const pdfs = await Promise.all(
-    fileEntries.map(async (file) => ({
-      pdfId: randomUUID(),
-      filename: file.name,
-      bytes: new Uint8Array(await file.arrayBuffer()),
-    })),
+    fileEntries.map(async (file) => {
+      const pdfId = randomUUID();
+      const filePath = path.join(uploadDir, `${pdfId}.pdf`);
+      await writeFile(filePath, new Uint8Array(await file.arrayBuffer()));
+      return { pdfId, filename: file.name, filePath };
+    }),
   );
 
   const llm = createLlmClient({
@@ -55,13 +60,14 @@ export async function POST(req: Request): Promise<Response> {
   });
   const bus = getEventBus();
 
-  void runBatch({
+  const batchPromise = runBatch({
     bus,
     batchId,
     granularity,
     stagingDir,
     vaultPath: cfg.vaultPath,
     maxConcurrent: cfg.maxConcurrentPdfs,
+    maxConcurrentLlm: cfg.maxConcurrentLlm,
     pdfs,
     hooks: {
       parsePdf: (bytes) =>
@@ -87,6 +93,15 @@ export async function POST(req: Request): Promise<Response> {
           granularity: args.granularity,
         }),
     },
+  });
+
+  void batchPromise.finally(() => {
+    rm(uploadDir, { recursive: true, force: true }).catch((err) => {
+      console.warn(
+        `[process] failed to clean upload dir ${uploadDir}:`,
+        err instanceof Error ? err.message : err,
+      );
+    });
   });
 
   return NextResponse.json({

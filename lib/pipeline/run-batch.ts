@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { EventBus } from "@/lib/events/bus";
 import type {
@@ -10,8 +10,20 @@ import type {
   Stage,
 } from "@/lib/types";
 import { writeStaging } from "@/lib/pipeline/write-staging";
-import { writeManifest } from "@/lib/pipeline/manifest";
+import {
+  appendManifestEntry,
+  finalizeManifest,
+  writeManifest,
+} from "@/lib/pipeline/manifest";
 import { validateWikilinks } from "@/lib/pipeline/wikilink-validator";
+import {
+  loadCheckpoint,
+  markPdfDone,
+  type CheckpointEntry,
+} from "@/lib/pipeline/checkpoint";
+import { withRetry } from "@/lib/llm/retry";
+
+export { writeManifest };
 
 export interface ParsedPageInput {
   pageNumber: number;
@@ -41,7 +53,7 @@ export interface BatchHooks {
 export interface BatchPdf {
   pdfId: string;
   filename: string;
-  bytes: Uint8Array;
+  filePath: string;
 }
 
 export interface RunBatchArgs {
@@ -51,6 +63,7 @@ export interface RunBatchArgs {
   stagingDir: string;
   vaultPath: string;
   maxConcurrent: number;
+  maxConcurrentLlm: number;
   pdfs: BatchPdf[];
   hooks: BatchHooks;
 }
@@ -60,6 +73,47 @@ interface PdfResult {
   linksKept: number;
   isFailed: boolean;
   pages: GeneratedPage[];
+}
+
+interface Semaphore {
+  acquire: () => Promise<() => void>;
+}
+
+function createSemaphore(limit: number): Semaphore {
+  const effectiveLimit = Math.max(1, limit);
+  let active = 0;
+  const waiters: Array<() => void> = [];
+  const release = (): void => {
+    active -= 1;
+    const next = waiters.shift();
+    if (next) next();
+  };
+  return {
+    acquire: () =>
+      new Promise<() => void>((resolve) => {
+        const tryAcquire = (): void => {
+          if (active < effectiveLimit) {
+            active += 1;
+            resolve(release);
+            return;
+          }
+          waiters.push(tryAcquire);
+        };
+        tryAcquire();
+      }),
+  };
+}
+
+async function withLlmSlot<T>(
+  semaphore: Semaphore,
+  task: () => Promise<T>,
+): Promise<T> {
+  const release = await semaphore.acquire();
+  try {
+    return await task();
+  } finally {
+    release();
+  }
 }
 
 function emitStatus(
@@ -85,28 +139,39 @@ async function processPdf(
   args: RunBatchArgs,
   pdf: BatchPdf,
   vaultTitles: Set<string>,
+  llmSemaphore: Semaphore,
 ): Promise<PdfResult> {
   const { bus, batchId, granularity, stagingDir, hooks } = args;
   emitStatus(bus, batchId, pdf.pdfId, "parsing", 0);
   try {
-    const parsed = await hooks.parsePdf(pdf.bytes);
+    let parseBytes: Uint8Array | null = await readFile(pdf.filePath);
+    const parsed = await hooks.parsePdf(parseBytes);
+    parseBytes = null;
+
     const imagePages = parsed.filter((p) => p.kind === "image");
     if (imagePages.length > 0) {
       emitStatus(bus, batchId, pdf.pdfId, "ocr", 0);
-      for (const page of imagePages) {
-        try {
-          const png = await hooks.renderPdfPageToPng(
-            pdf.bytes,
-            page.pageNumber,
-          );
-          page.text = await hooks.ocrPageImage(png);
-        } catch (err) {
-          console.warn(
-            `[run-batch] ocr failed for ${pdf.filename} page ${page.pageNumber}:`,
-            err,
-          );
-          page.text = "";
+      let ocrBytes: Uint8Array | null = await readFile(pdf.filePath);
+      try {
+        for (const page of imagePages) {
+          try {
+            const png = await hooks.renderPdfPageToPng(
+              ocrBytes,
+              page.pageNumber,
+            );
+            page.text = await withLlmSlot(llmSemaphore, () =>
+              withRetry(() => hooks.ocrPageImage(png)),
+            );
+          } catch (err) {
+            console.warn(
+              `[run-batch] ocr failed for ${pdf.filename} page ${page.pageNumber}:`,
+              err,
+            );
+            page.text = "";
+          }
         }
+      } finally {
+        ocrBytes = null;
       }
     }
 
@@ -118,10 +183,14 @@ async function processPdf(
     let resolvedGranularity: ResolvedGranularity;
     if (granularity === "auto") {
       try {
-        resolvedGranularity = await hooks.pickGranularity({
-          pdfText: fullText,
-          pageCount: parsed.length,
-        });
+        resolvedGranularity = await withLlmSlot(llmSemaphore, () =>
+          withRetry(() =>
+            hooks.pickGranularity({
+              pdfText: fullText,
+              pageCount: parsed.length,
+            }),
+          ),
+        );
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.warn(
@@ -134,11 +203,13 @@ async function processPdf(
       resolvedGranularity = granularity;
     }
 
-    const result = await hooks.extractConcepts({
-      pdfText: fullText,
-      vaultTitles: Array.from(vaultTitles),
-      granularity: resolvedGranularity,
-    });
+    const result = await withLlmSlot(llmSemaphore, () =>
+      hooks.extractConcepts({
+        pdfText: fullText,
+        vaultTitles: Array.from(vaultTitles),
+        granularity: resolvedGranularity,
+      }),
+    );
 
     const knownThisBatch = new Set<string>(vaultTitles);
     for (const p of result.pages) knownThisBatch.add(p.title);
@@ -180,35 +251,80 @@ async function processPdf(
 }
 
 export async function runBatch(args: RunBatchArgs): Promise<void> {
+  await mkdir(path.join(args.stagingDir, args.batchId), { recursive: true });
+
+  const checkpoint = await loadCheckpoint(args.stagingDir, args.batchId);
+  const completedById = new Map<string, CheckpointEntry>();
+  if (checkpoint) {
+    for (const entry of checkpoint.entries) {
+      completedById.set(entry.pdfId, entry);
+    }
+  }
+
   const vaultTitles = await args.hooks.scanVaultTitles(args.vaultPath);
 
   let totalPages = 0;
   let totalLinks = 0;
   let totalFailed = 0;
-  const allPages: GeneratedPage[] = [];
 
-  const queue = [...args.pdfs];
+  const remainingPdfs: BatchPdf[] = [];
+  for (const pdf of args.pdfs) {
+    const prior = completedById.get(pdf.pdfId);
+    if (prior && prior.ok) {
+      emitStatus(args.bus, args.batchId, pdf.pdfId, "done", prior.pagesWritten);
+      totalPages += prior.pagesWritten;
+      continue;
+    }
+    remainingPdfs.push(pdf);
+  }
+
+  const llmSemaphore = createSemaphore(args.maxConcurrentLlm);
+  const queue = [...remainingPdfs];
   async function worker(): Promise<void> {
     while (queue.length > 0) {
       const next = queue.shift();
       if (!next) return;
-      const result = await processPdf(args, next, vaultTitles);
+      const result = await processPdf(args, next, vaultTitles, llmSemaphore);
       totalPages += result.pagesWritten;
       totalLinks += result.linksKept;
       if (result.isFailed) totalFailed += 1;
-      for (const page of result.pages) allPages.push(page);
+
+      if (!result.isFailed) {
+        await appendManifestEntry({
+          stagingDir: args.stagingDir,
+          batchId: args.batchId,
+          pdfId: next.pdfId,
+          pages: result.pages,
+        });
+      }
+      const entry: CheckpointEntry = {
+        pdfId: next.pdfId,
+        ok: !result.isFailed,
+        pagesWritten: result.pagesWritten,
+        finishedAt: new Date().toISOString(),
+      };
+      try {
+        await markPdfDone(args.stagingDir, args.batchId, entry);
+      } catch (err) {
+        console.warn("[run-batch] failed to write checkpoint:", err);
+      }
     }
   }
-  const workerCount = Math.min(args.maxConcurrent, args.pdfs.length);
-  const workers = Array.from({ length: workerCount }, () => worker());
+
+  const workerCount = Math.max(
+    1,
+    Math.min(args.maxConcurrent, remainingPdfs.length),
+  );
+  const workers = Array.from(
+    { length: remainingPdfs.length === 0 ? 0 : workerCount },
+    () => worker(),
+  );
   await Promise.all(workers);
 
-  await mkdir(path.join(args.stagingDir, args.batchId), { recursive: true });
-  await writeManifest({
+  await finalizeManifest({
     stagingDir: args.stagingDir,
     batchId: args.batchId,
     granularity: args.granularity,
-    pages: allPages,
   });
 
   args.bus.publish({
