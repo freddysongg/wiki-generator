@@ -14,8 +14,7 @@ interface NavItem {
 const ITEMS: ReadonlyArray<NavItem> = [
   { index: "01", label: "Generate", href: "/" },
   { index: "02", label: "Graph", href: "/graph" },
-  { index: "03", label: "Plugins", href: "/plugins" },
-  { index: "04", label: "History", href: "/history" },
+  { index: "03", label: "History", href: "/history" },
 ];
 
 export function SidebarNav(): JSX.Element {

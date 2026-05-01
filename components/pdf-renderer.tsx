@@ -12,6 +12,7 @@ const PAGE_WIDTH_PX = 720;
 type LoadState =
   | { status: "loading" }
   | { status: "ready" }
+  | { status: "missing" }
   | { status: "error" };
 
 interface Props {
@@ -24,12 +25,28 @@ interface DocumentLoadSuccess {
   numPages: number;
 }
 
+function classifyLoadError(error: Error): LoadState {
+  const message = error.message.toLowerCase();
+  if (message.includes("404") || message.includes("missing pdf")) {
+    return { status: "missing" };
+  }
+  return { status: "error" };
+}
+
 export function PdfRenderer({
   fileUrl,
   pageNumber,
   onLoadSuccess,
 }: Props): JSX.Element {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
+
+  if (loadState.status === "missing") {
+    return (
+      <p className="t-meta text-fg-mute px-4 py-3 text-center">
+        Source PDF not available for this batch.
+      </p>
+    );
+  }
 
   return (
     <Document
@@ -38,11 +55,9 @@ export function PdfRenderer({
         setLoadState({ status: "ready" });
         onLoadSuccess(numPages);
       }}
-      onLoadError={() => setLoadState({ status: "error" })}
+      onLoadError={(error: Error) => setLoadState(classifyLoadError(error))}
       loading={<p className="t-meta text-fg-mute">Loading PDF…</p>}
-      error={
-        <p className="t-meta text-brand-accent">Could not load PDF.</p>
-      }
+      error={<p className="t-meta text-brand-accent">Could not load PDF.</p>}
     >
       {loadState.status === "ready" ? (
         <Page

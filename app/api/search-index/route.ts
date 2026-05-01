@@ -92,7 +92,13 @@ export async function GET(): Promise<Response> {
       loadRecordsForBatch(stagingDir, dir).catch(() => [] as SearchRecord[]),
     ),
   );
-  const records = perBatch.flat();
+  const seenIds = new Set<string>();
+  const records: SearchRecord[] = [];
+  for (const record of perBatch.flat()) {
+    if (seenIds.has(record.id)) continue;
+    seenIds.add(record.id);
+    records.push(record);
+  }
   const body: SearchIndexResponse = { records };
   return NextResponse.json(body);
 }

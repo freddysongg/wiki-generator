@@ -8,12 +8,12 @@ vi.mock("next/navigation", () => ({
 }));
 
 describe("SidebarNav", () => {
-  it("renders all four nav items without 'soon' badges", () => {
+  it("renders the three nav items without 'soon' badges", () => {
     render(<SidebarNav />);
     expect(screen.getByRole("link", { name: /generate/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /graph/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /plugins/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /history/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /plugins/i })).toBeNull();
     expect(screen.queryByText(/soon/i)).not.toBeInTheDocument();
   });
 

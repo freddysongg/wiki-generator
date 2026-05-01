@@ -17,6 +17,7 @@ type LoadState =
 export default function HistoryPage(): JSX.Element {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [importingId, setImportingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,6 +60,37 @@ export default function HistoryPage(): JSX.Element {
       toast.success(`Imported ${result.imported} pages${conflictNote}.`);
     } finally {
       setImportingId(null);
+    }
+  }, []);
+
+  const handleDelete = useCallback(async (batchId: string): Promise<void> => {
+    const confirmed = window.confirm(
+      `Delete batch ${batchId}? Generated pages will be removed from staging. Imported notes in your vault are unaffected.`,
+    );
+    if (!confirmed) return;
+    setDeletingId(batchId);
+    try {
+      const response = await fetch(
+        `/api/batches/${encodeURIComponent(batchId)}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) {
+        const errorBody = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        toast.error(`Delete failed: ${errorBody.error ?? response.status}`);
+        return;
+      }
+      setState((prev) => {
+        if (prev.kind !== "loaded") return prev;
+        return {
+          kind: "loaded",
+          batches: prev.batches.filter((b) => b.batchId !== batchId),
+        };
+      });
+      toast.success("Batch deleted.");
+    } finally {
+      setDeletingId(null);
     }
   }, []);
 
@@ -119,7 +151,9 @@ export default function HistoryPage(): JSX.Element {
                 key={batch.batchId}
                 batch={batch}
                 isImporting={importingId === batch.batchId}
+                isDeleting={deletingId === batch.batchId}
                 onImport={handleImport}
+                onDelete={handleDelete}
               />
             ))}
           </ul>

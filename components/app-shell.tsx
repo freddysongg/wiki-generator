@@ -2,20 +2,10 @@
 
 import type { JSX, ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { useBatch, type BatchStage } from "@/components/batch-context";
 import { SearchDialog, type SearchRecord } from "@/components/search-dialog";
 import { PagePreviewDialog } from "@/components/page-preview-dialog";
-
-type ViewPath = "/" | "/graph" | "/plugins" | "/history";
-
-const VIEW_LABEL: Record<ViewPath, string> = {
-  "/": "Generate",
-  "/graph": "Graph",
-  "/plugins": "Plugins",
-  "/history": "History",
-};
 
 const STAGE_PHRASE: Record<BatchStage, string> = {
   idle: "Ready",
@@ -35,22 +25,11 @@ type PreviewState =
       sourcePages: string;
     };
 
-function isViewPath(value: string): value is ViewPath {
-  return (
-    value === "/" ||
-    value === "/graph" ||
-    value === "/plugins" ||
-    value === "/history"
-  );
-}
-
 interface Props {
   children: ReactNode;
 }
 
 export function AppShell({ children }: Props): JSX.Element {
-  const pathname = usePathname();
-  const view = isViewPath(pathname) ? VIEW_LABEL[pathname] : "Generate";
   const { snapshot } = useBatch();
   const stagePhrase = STAGE_PHRASE[snapshot.stage];
 
@@ -87,14 +66,11 @@ export function AppShell({ children }: Props): JSX.Element {
   }
 
   let topRight = `${stagePhrase} · ${snapshot.queuedCount} queued`;
-  let bottomLeft = stagePhrase;
   if (snapshot.stage === "processing") {
     const done = snapshot.statuses.filter((s) => s.stage === "done").length;
-    bottomLeft = `Processing · ${done}/${snapshot.statuses.length}`;
-    topRight = bottomLeft;
+    topRight = `Processing · ${done}/${snapshot.statuses.length}`;
   }
   if (snapshot.stage === "complete" && snapshot.totals) {
-    bottomLeft = `Complete · ${snapshot.totals.pages} pages · ${snapshot.totals.links} links`;
     topRight = `Complete · ${snapshot.totals.pages} pages`;
   }
 
@@ -106,7 +82,7 @@ export function AppShell({ children }: Props): JSX.Element {
         className="sticky top-0 z-20 flex items-center justify-between px-4 h-[var(--rule-h-top)] border-b border-rule bg-bg t-meta text-fg-mute"
         aria-label="top status rule"
       >
-        <span>wiki-gen / v0.1</span>
+        <span>wiki-gen</span>
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -125,13 +101,6 @@ export function AppShell({ children }: Props): JSX.Element {
           {children}
         </main>
       </div>
-      <footer
-        className="sticky bottom-0 z-20 flex items-center justify-between px-4 h-[var(--rule-h-bot)] border-t border-rule bg-bg t-meta text-fg-mute"
-        aria-label="bottom status rule"
-      >
-        <span>{bottomLeft}</span>
-        <span>v0.1 · {view}</span>
-      </footer>
       <SearchDialog
         open={isSearchOpen}
         onOpenChange={setIsSearchOpen}

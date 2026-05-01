@@ -43,11 +43,14 @@ const LINK_DISTANCE_MIN = 90;
 const LINK_DISTANCE_MAX = 220;
 const COOLDOWN_TICKS_MIN = 240;
 const COOLDOWN_TICKS_MAX = 800;
+const CENTER_STRENGTH_MIN = 0.05;
+const CENTER_STRENGTH_MAX = 0.25;
 
 interface ForceParams {
   chargeStrength: number;
   linkDistance: number;
   cooldownTicks: number;
+  centerStrength: number;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -66,7 +69,9 @@ function computeForceParams(nodeCount: number): ForceParams {
   const cooldownTicks = Math.round(
     COOLDOWN_TICKS_MIN + (COOLDOWN_TICKS_MAX - COOLDOWN_TICKS_MIN) * ratio,
   );
-  return { chargeStrength, linkDistance, cooldownTicks };
+  const centerStrength =
+    CENTER_STRENGTH_MIN + (CENTER_STRENGTH_MAX - CENTER_STRENGTH_MIN) * ratio;
+  return { chargeStrength, linkDistance, cooldownTicks, centerStrength };
 }
 
 function nodeRadiusForDegree(degree: number): number {
@@ -101,6 +106,13 @@ type GraphHandle = ForceGraphMethods;
 interface ForceSimulation {
   strength?: (value: number) => ForceSimulation;
   distance?: (value: number) => ForceSimulation;
+}
+
+interface NodeWithCoords {
+  id: unknown;
+  label?: unknown;
+  x?: number;
+  y?: number;
 }
 
 interface BuiltGraph {
@@ -362,8 +374,10 @@ export function GraphPreview(props: GraphPreviewProps): JSX.Element {
     if (!handle || typeof handle.d3Force !== "function") return;
     const charge = handle.d3Force("charge") as ForceSimulation | undefined;
     const link = handle.d3Force("link") as ForceSimulation | undefined;
+    const center = handle.d3Force("center") as ForceSimulation | undefined;
     charge?.strength?.(forceParams.chargeStrength);
     link?.distance?.(forceParams.linkDistance);
+    center?.strength?.(forceParams.centerStrength);
     handle.d3ReheatSimulation?.();
   }, [built, forceParams]);
 
@@ -398,34 +412,68 @@ export function GraphPreview(props: GraphPreviewProps): JSX.Element {
     ): void => {
       if (!theme || !built) return;
       if (typeof node.x !== "number" || typeof node.y !== "number") return;
-      if (typeof node.id !== "string" || typeof node.label !== "string") {
-        return;
-      }
+      if (typeof node.id !== "string") return;
       const isAccented = node.id === hoveredTitle || node.id === selectedTitle;
       const degree = built.degreeByTitle.get(node.id) ?? 0;
       const baseRadiusPx = nodeRadiusForDegree(degree);
-      const radiusPx = isAccented ? baseRadiusPx * NODE_HOVER_SCALE : baseRadiusPx;
+      const radiusPx = isAccented
+        ? baseRadiusPx * NODE_HOVER_SCALE
+        : baseRadiusPx;
       const radiusWorld = radiusPx / globalScale;
       ctx.beginPath();
       ctx.arc(node.x, node.y, radiusWorld, 0, 2 * Math.PI);
       ctx.fillStyle = isAccented ? theme.terracotta : theme.ink;
       ctx.fill();
-
-      const shouldDrawLabel = isAccented || globalScale >= LABEL_VISIBLE_ZOOM;
-      if (!shouldDrawLabel) return;
-
-      const fontWorld = LABEL_FONT_PX / globalScale;
-      ctx.font = `${fontWorld}px ${LABEL_FONT_FAMILY}`;
-      ctx.fillStyle = isAccented ? theme.terracotta : theme.ink;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      ctx.fillText(
-        truncate(node.label, LABEL_TRUNCATE_CHARS),
-        node.x,
-        node.y + radiusWorld + NODE_LABEL_GAP_PX / globalScale,
-      );
     },
     [theme, hoveredTitle, selectedTitle, built],
+  );
+
+  const drawLabelsOverlay = useCallback(
+    (ctx: CanvasRenderingContext2D, globalScale: number): void => {
+      if (!theme || !built) return;
+      const showAllLabels = globalScale >= LABEL_VISIBLE_ZOOM;
+      if (!showAllLabels && hoveredTitle === null && selectedTitle === null) {
+        return;
+      }
+      const nodes = built.data.nodes as unknown as NodeWithCoords[];
+      const fontWorld = LABEL_FONT_PX / globalScale;
+      ctx.font = `${fontWorld}px ${LABEL_FONT_FAMILY}`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      for (const node of nodes) {
+        if (typeof node.id !== "string" || typeof node.label !== "string") {
+          continue;
+        }
+        if (typeof node.x !== "number" || typeof node.y !== "number") continue;
+        const isAccented =
+          node.id === hoveredTitle || node.id === selectedTitle;
+        if (!isAccented && !showAllLabels) continue;
+        const degree = built.degreeByTitle.get(node.id) ?? 0;
+        const baseRadiusPx = nodeRadiusForDegree(degree);
+        const radiusPx = isAccented
+          ? baseRadiusPx * NODE_HOVER_SCALE
+          : baseRadiusPx;
+        const radiusWorld = radiusPx / globalScale;
+        ctx.fillStyle = isAccented ? theme.terracotta : theme.ink;
+        ctx.fillText(
+          truncate(node.label, LABEL_TRUNCATE_CHARS),
+          node.x,
+          node.y + radiusWorld + NODE_LABEL_GAP_PX / globalScale,
+        );
+      }
+    },
+    [theme, hoveredTitle, selectedTitle, built],
+  );
+
+  const formatNodeLabel = useCallback(
+    (node: GraphNode): string => {
+      if (!built || typeof node.id !== "string") return "";
+      const page = built.pageByTitle.get(node.id);
+      if (!page) return node.id;
+      const degree = built.degreeByTitle.get(node.id) ?? 0;
+      return `${page.title} · ${degree} link${degree === 1 ? "" : "s"}`;
+    },
+    [built],
   );
 
   const drawLink = useCallback(
@@ -531,6 +579,8 @@ export function GraphPreview(props: GraphPreviewProps): JSX.Element {
             linkWidth={LINK_WIDTH}
             linkCanvasObject={drawLink}
             nodeCanvasObject={drawNode}
+            onRenderFramePost={drawLabelsOverlay}
+            nodeLabel={formatNodeLabel}
             nodePointerAreaPaint={(
               node: GraphNode,
               color: string,

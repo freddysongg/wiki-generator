@@ -97,6 +97,31 @@ describe("GET /api/search-index", () => {
     });
   });
 
+  it("dedupes records when the same id appears across batches", async () => {
+    const sharedPage = {
+      title: "Shared",
+      filename: "Shared.md",
+      aliases: [],
+      type: "concept",
+      source: "x.pdf",
+      sourcePages: "p. 1",
+      tags: [],
+      links: [],
+      createdAt: "2026-04-25T00:00:00.000Z",
+    };
+    await writeBatch("dup", {
+      version: "1.0.0",
+      batchId: "dup",
+      createdAt: "2026-04-25T00:00:00.000Z",
+      granularity: "medium",
+      pages: [sharedPage, sharedPage],
+    });
+    const { GET } = await import("@/app/api/search-index/route");
+    const res = await GET();
+    const json = await res.json();
+    expect(json.records).toHaveLength(1);
+  });
+
   it("skips invalid manifests and invalid batch directory names", async () => {
     await mkdir(path.join(stagingDir, "broken"), { recursive: true });
     await writeFile(
