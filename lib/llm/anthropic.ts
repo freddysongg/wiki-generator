@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { LlmClient, ToolCallRequest, VisionRequest } from "./types";
+import { TruncatedResponseError } from "./types";
 
 let cached: { key: string; sdk: Anthropic } | undefined;
 
@@ -47,6 +48,9 @@ export function createAnthropicClient(apiKey: string): LlmClient {
         messages: [{ role: "user", content: userBlocks }],
       });
 
+      if (response.stop_reason === "max_tokens") {
+        throw new TruncatedResponseError(req.model, req.maxTokens);
+      }
       const toolBlock = response.content.find((b) => b.type === "tool_use");
       if (!toolBlock || toolBlock.type !== "tool_use") {
         throw new Error("anthropic: model did not return tool_use block");

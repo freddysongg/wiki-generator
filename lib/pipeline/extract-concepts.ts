@@ -74,10 +74,10 @@ const TOOL_SCHEMA: Record<string, unknown> = {
   required: ["pages"],
 };
 
-const MAX_TOKENS = 16000;
+const MAX_TOKENS = 32000;
 const MAX_ATTEMPTS = 2;
-export const CHUNK_THRESHOLD_CHARS = 200_000;
-const CHUNK_TARGET_CHARS = 150_000;
+export const CHUNK_THRESHOLD_CHARS = 120_000;
+const CHUNK_TARGET_CHARS = 80_000;
 const PAGE_MARKER_PATTERN = /\[Page \d+\]/g;
 
 interface ChunkRunArgs {

@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { LlmClient, ToolCallRequest, VisionRequest } from "./types";
+import { TruncatedResponseError } from "./types";
 
 let cached: { key: string; sdk: OpenAI } | undefined;
 
@@ -41,6 +42,9 @@ export function createOpenAiClient(apiKey: string): LlmClient {
       });
 
       const choice = completion.choices[0];
+      if (choice?.finish_reason === "length") {
+        throw new TruncatedResponseError(req.model, req.maxTokens);
+      }
       const toolCall = choice?.message?.tool_calls?.[0];
       if (!toolCall || toolCall.type !== "function") {
         throw new Error("openai: model did not return a function tool_call");

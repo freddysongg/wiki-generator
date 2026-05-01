@@ -45,6 +45,9 @@ export default function Page(): JSX.Element {
   const [granularity, setGranularity] = useState<Granularity>("medium");
   const [batchId, setBatchId] = useState<string | null>(null);
   const [selectedPage, setSelectedPage] = useState<ManifestPage | null>(null);
+  const [isInputCollapsed, setIsInputCollapsed] = useState<boolean>(false);
+  const [isPipelineCollapsed, setIsPipelineCollapsed] =
+    useState<boolean>(false);
   const { snapshot, setQueuedCount, startBatch, importBatch, isImporting } =
     useBatch();
   const previewBatchId = snapshot.manifest?.batchId ?? null;
@@ -99,38 +102,45 @@ export default function Page(): JSX.Element {
           label="Input"
           tail={`${files.length} file${files.length === 1 ? "" : "s"} queued`}
           withTopRule={false}
+          collapsible
+          isCollapsed={isInputCollapsed}
+          onToggle={() => setIsInputCollapsed((prev) => !prev)}
         />
-        <UploadZone onFiles={setFiles} disabled={isProcessing} />
-        {files.length > 0 ? (
-          <ul className="flex flex-col">
-            {files.map((file, index) => (
-              <li
-                key={`${file.name}-${file.size}-${index}`}
-                className="flex items-center gap-3 px-3 py-2 border-t border-rule first:border-t-0"
-              >
-                <span
-                  className="t-body text-fg truncate flex-1"
-                  title={file.name}
-                >
-                  {file.name}
-                </span>
-                <span className="t-meta text-fg-mute num-tabular">
-                  {formatBytes(file.size)}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() =>
-                    setFiles((prev) => prev.filter((_, i) => i !== index))
-                  }
-                  disabled={isProcessing}
-                  aria-label={`remove ${file.name}`}
-                >
-                  ×
-                </Button>
-              </li>
-            ))}
-          </ul>
+        {!isInputCollapsed ? (
+          <>
+            <UploadZone onFiles={setFiles} disabled={isProcessing} />
+            {files.length > 0 ? (
+              <ul className="flex flex-col">
+                {files.map((file, index) => (
+                  <li
+                    key={`${file.name}-${file.size}-${index}`}
+                    className="flex items-center gap-3 px-3 py-2 border-t border-rule first:border-t-0"
+                  >
+                    <span
+                      className="t-body text-fg truncate flex-1"
+                      title={file.name}
+                    >
+                      {file.name}
+                    </span>
+                    <span className="t-meta text-fg-mute num-tabular">
+                      {formatBytes(file.size)}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() =>
+                        setFiles((prev) => prev.filter((_, i) => i !== index))
+                      }
+                      disabled={isProcessing}
+                      aria-label={`remove ${file.name}`}
+                    >
+                      ×
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </>
         ) : null}
       </section>
 
@@ -159,8 +169,13 @@ export default function Page(): JSX.Element {
             index="003"
             label="Pipeline"
             tail={`${doneCount} / ${items.length} complete`}
+            collapsible
+            isCollapsed={isPipelineCollapsed}
+            onToggle={() => setIsPipelineCollapsed((prev) => !prev)}
           />
-          <StatusList items={items} onPageOpen={setSelectedPage} />
+          {!isPipelineCollapsed ? (
+            <StatusList items={items} onPageOpen={setSelectedPage} />
+          ) : null}
         </section>
       ) : null}
 
